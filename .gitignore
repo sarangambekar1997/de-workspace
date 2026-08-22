@@ -1,0 +1,81 @@
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# =========================
+# Environment / Secrets
+# =========================
+.env
+.env.*
+!.env.example
+
+# Azure credentials / secrets
+*.pem
+*.key
+*.pfx
+*.cer
+
+# =========================
+# Jupyter
+# =========================
+.ipynb_checkpoints/
+
+# =========================
+# Data
+# =========================
+data/raw/
+data/processed/
+data/temp/
+
+*.csv
+*.parquet
+*.json
+*.jsonl
+
+# Keep directory structure
+!data/.gitkeep
+
+# =========================
+# Spark
+# =========================
+spark-warehouse/
+metastore_db/
+derby.log/
+
+# =========================
+# Logs
+# =========================
+*.log
+logs/
+
+# =========================
+# Testing
+# =========================
+.pytest_cache/
+.coverage
+htmlcov/
+
+# =========================
+# Ruff / tooling
+# =========================
+.ruff_cache/
+
+# =========================
+# OS
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# VS Code
+# =========================
+.vscode/
