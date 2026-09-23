@@ -7,11 +7,11 @@
 
 ---
 
-## Plain English: What Is dbt?
+## Overview
 
-**dbt (data build tool) does one thing: run SQL SELECT statements and turn them into tables or views in your warehouse.**
+**Purpose:** dbt (data build tool) runs SQL `SELECT` statements and materializes the results as tables or views in your warehouse.
 
-That's it. But it wraps that simple idea with everything you need to build a maintainable transformation layer:
+Around that core idea, it provides what a maintainable transformation layer needs:
 
 ```
 Without dbt:                          With dbt:
@@ -22,13 +22,13 @@ Without dbt:                          With dbt:
   - No versioning                       - Git-native, PR-reviewable SQL
   - Copy-paste table references         - ref('model_name') auto-resolves dependencies
 
-Analogy: dbt is to SQL transformations what Airflow is to pipeline scheduling.
+In short: dbt manages SQL transformations the way an orchestrator manages pipeline scheduling.
 ```
 
-**What dbt does NOT do:**
-- Move data from source systems to the warehouse → that's a loader (Fivetran, Airbyte, custom pipelines)
-- Schedule itself → that's Airflow, Prefect, or dbt Cloud's scheduler
-- Run Python → it's SQL-first (though dbt Python models exist for edge cases)
+**Out of scope for dbt:**
+- Moving data from source systems into the warehouse — handled by ingestion tools or custom pipelines
+- Scheduling — handled by an orchestrator or dbt Cloud's scheduler
+- General-purpose Python processing — dbt is SQL-first (Python models exist for specific cases)
 
 ---
 
@@ -57,6 +57,12 @@ Analogy: dbt is to SQL transformations what Airflow is to pipeline scheduling.
 - [Advanced Macros](#advanced-macros)
 - [Exposures & Metrics](#exposures--metrics)
 - [Best Practices](#best-practices)
+
+**Reference**
+- [Common Pitfalls](#common-pitfalls)
+- [Cheat Sheet](#cheat-sheet)
+- [Interview Questions](#interview-questions)
+- [Further Reading](#further-reading)
 
 ---
 
@@ -292,7 +298,7 @@ sources:
         columns:
           - name: order_id
             description: "Unique order identifier"
-            tests:
+            data_tests:
               - not_null
               - unique
 
@@ -372,6 +378,8 @@ FROM {{ ref('stg_orders') }}
 
 Tests are SQL queries that return rows when they **fail**. Zero rows = test passed.
 
+> **dbt 1.8+:** the YAML key is `data_tests:` (the older `tests:` still works but is deprecated), and `unit_tests:` were added for testing model logic against mock inputs — see [Unit tests](#unit-tests-dbt-18) below.
+
 ### Generic tests (built-in)
 
 ```yaml
@@ -383,25 +391,25 @@ models:
     description: "Cleaned orders from the raw source"
     columns:
       - name: order_id
-        tests:
+        data_tests:
           - not_null
           - unique
 
       - name: status
-        tests:
+        data_tests:
           - not_null
           - accepted_values:
               values: ['placed', 'shipped', 'delivered', 'cancelled', 'returned']
 
       - name: customer_id
-        tests:
+        data_tests:
           - not_null
           - relationships:
               to: ref('stg_customers')
               field: customer_id
 
       - name: amount
-        tests:
+        data_tests:
           - not_null
 ```
 
@@ -414,6 +422,30 @@ models:
 SELECT order_id, amount
 FROM   {{ ref('fct_orders') }}
 WHERE  amount < 0
+```
+
+### Unit tests (dbt 1.8+)
+
+Data tests check the data a model produced; unit tests check the model's *logic* using small, hand-written inputs — no real data needed.
+
+```yaml
+# models/marts/_marts.yml
+unit_tests:
+  - name: test_is_first_order_flag
+    model: fct_orders
+    given:
+      - input: ref('stg_orders')
+        rows:
+          - {order_id: 1, customer_id: 10, created_at: '2024-01-01'}
+          - {order_id: 2, customer_id: 10, created_at: '2024-02-01'}
+    expect:
+      rows:
+        - {order_id: 1, is_first_order: true}
+        - {order_id: 2, is_first_order: false}
+```
+
+```bash
+dbt test --select "test_type:unit"     # run unit tests only (typically in CI)
 ```
 
 ### Running tests
@@ -429,13 +461,13 @@ dbt test --select source:raw        # tests for source definitions
 
 ```yaml
 - name: amount
-  tests:
+  data_tests:
     - dbt_expectations.expect_column_values_to_be_between:
         min_value: 0
         max_value: 100000
     - dbt_expectations.expect_column_to_exist
 - name: created_at
-  tests:
+  data_tests:
     - dbt_expectations.expect_column_values_to_be_of_type:
         column_type: timestamp_ntz
 ```
@@ -702,13 +734,13 @@ dbt packages add reusable macros, tests, and models. Defined in `packages.yml`.
 # packages.yml
 packages:
   - package: dbt-labs/dbt_utils
-    version: 1.1.1
+    version: [">=1.0.0", "<2.0.0"]      # ranges get patch fixes; exact pins go stale
 
-  - package: calogica/dbt_expectations
-    version: 0.10.1
+  - package: metaplane/dbt_expectations   # moved from calogica/ (no longer maintained)
+    version: [">=0.10.0", "<0.11.0"]
 
   - package: dbt-labs/codegen
-    version: 0.12.1
+    version: [">=0.12.0", "<1.0.0"]
 ```
 
 ```bash
@@ -802,7 +834,7 @@ WHERE  {{ column_name }} < 0
 # Use it like a built-in test
 columns:
   - name: amount
-    tests:
+    data_tests:
       - not_negative
 ```
 
@@ -890,7 +922,7 @@ JOIN customers ...
 - name: fct_orders
   columns:
     - name: order_id
-      tests:
+      data_tests:
         - not_null
         - unique
 ```
@@ -905,6 +937,67 @@ dbt test --select state:modified+   # test them
 # Requires a manifest.json from the last production run
 dbt run --defer --state ./prod_artifacts/ --select state:modified+
 ```
+
+---
+
+## Common Pitfalls
+
+| Pitfall | Symptom | Fix |
+|---------|---------|-----|
+| Hardcoding table names instead of `ref()` / `source()` | Wrong build order; dev reads prod tables; lineage graph is incomplete | Always `ref()` models and `source()` raw tables |
+| Incremental filter `> MAX(updated_at)` with late-arriving data | Rows that arrive late with older timestamps are never loaded | Add a lookback window (`>= MAX(updated_at) - INTERVAL '3 days'`) together with a `unique_key` merge |
+| Incremental model without `unique_key` | Duplicates on every rerun or backfill | Set `unique_key` (or use `insert_overwrite` / `delete+insert` by partition) |
+| Changing an incremental model's columns | New columns never appear, or the run fails | `on_schema_change='append_new_columns'` (or `sync_all_columns`), or `--full-refresh` |
+| Business logic in staging models | The same logic duplicated across marts; hard to change | Staging = rename, cast, light cleaning; logic goes in intermediate/marts |
+| Joins in staging / one huge 500-line model | Slow, untestable, impossible to review | Split into staging → intermediate → mart models, one concept each |
+| Primary keys never tested | Fan-out duplicates silently inflate metrics | `unique` + `not_null` on every model's grain |
+| `dbt run` in CI without tests | Broken models reach production | `dbt build` (runs and tests in DAG order) with slim CI (`state:modified+ --defer`) |
+| Everything materialized as `table` | Long runs and high warehouse cost | Views for staging, ephemeral/views for light intermediates, tables/incremental for marts |
+| Jinja-heavy macros for simple SQL | Nobody can read the compiled SQL | Keep models as plain SQL; use macros for true repetition |
+| Snapshotting from staging models or transformed data | History reflects your logic changes, not the source's | Snapshot raw sources directly; the snapshot is itself a source of truth |
+| Sources without freshness checks | Stale data flows through with every test passing | `loaded_at_field` + `freshness` in `sources.yml`; run `dbt source freshness` |
+
+---
+
+## Cheat Sheet
+
+| Task | Command |
+|------|---------|
+| Run + test everything in DAG order | `dbt build` |
+| One model and everything downstream | `dbt build -s fct_orders+` |
+| Everything upstream of a model | `dbt build -s +fct_orders` |
+| A folder / tag | `dbt build -s marts.core` · `-s tag:daily` |
+| Only changed models (slim CI) | `dbt build -s state:modified+ --defer --state prod-artifacts/` |
+| Rebuild an incremental model from scratch | `dbt run -s fct_orders --full-refresh` |
+| Data tests / unit tests only | `dbt test -s fct_orders` · `dbt test -s "test_type:unit"` |
+| Source freshness | `dbt source freshness` |
+| Snapshots | `dbt snapshot` |
+| See compiled SQL | `dbt compile -s model` → `target/compiled/...` · `dbt show -s model` (preview rows) |
+| Install packages | `dbt deps` |
+| Docs site | `dbt docs generate && dbt docs serve` |
+| Check connection | `dbt debug` |
+| Retry only what failed | `dbt retry` |
+| Pass variables | `dbt run --vars '{"start_date": "2024-01-01"}'` |
+
+**Jinja you'll use constantly**
+
+```sql
+{{ config(materialized='incremental', unique_key='order_id', on_schema_change='append_new_columns') }}
+
+select * from {{ ref('stg_orders') }}
+{% if is_incremental() %}
+  where updated_at >= (select max(updated_at) - interval '3 days' from {{ this }})
+{% endif %}
+
+{{ source('stripe', 'charges') }}          -- raw table
+{{ var('start_date', '2020-01-01') }}       -- variable with default
+{{ target.name }}                           -- dev / prod
+{{ dbt_utils.generate_surrogate_key(['order_id', 'line_no']) }}
+```
+
+**Materialization picker:** staging → `view` · light intermediate → `ephemeral` / `view` · marts → `table` · big, append-heavy facts → `incremental` · SCD Type 2 history → snapshot
+
+**Selectors:** `+model` (parents) · `model+` (children) · `@model` (children and their parents) · `tag:x` · `path:models/marts` · `state:modified` · `result:error` · `source:stripe+`
 
 ---
 
@@ -927,6 +1020,18 @@ A: In a large dbt project with 500+ models, running `dbt build` on every PR take
 
 **Q: How does dbt handle environments (dev vs prod)?**
 A: dbt uses profiles.yml to define target environments. In dev, models are built in a personal schema (`dbt_alice`). In prod, models build in the configured production schema. The `ref()` macro always resolves to the current environment's schema — you never hardcode schema names. This means the same SQL runs correctly in both environments without changes.
+
+---
+
+## Further Reading
+
+- [dbt documentation](https://docs.getdbt.com/docs/introduction)
+- [How we structure our dbt projects](https://docs.getdbt.com/best-practices/how-we-structure/1-guide-overview) — the standard staging/intermediate/marts layout
+- [Node selection syntax](https://docs.getdbt.com/reference/node-selection/syntax)
+- [Incremental models in depth](https://docs.getdbt.com/best-practices/materializations/4-incremental-models)
+- [dbt_utils](https://hub.getdbt.com/dbt-labs/dbt_utils/latest/) and [dbt-expectations](https://hub.getdbt.com/metaplane/dbt_expectations/latest/) packages
+- [SQLFluff](https://docs.sqlfluff.com/) — SQL linter with a dbt templater
+- [dbt Learn](https://learn.getdbt.com/) — free official courses
 
 ---
 

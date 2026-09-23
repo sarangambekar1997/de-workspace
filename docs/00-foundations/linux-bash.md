@@ -7,6 +7,23 @@
 
 ---
 
+## Overview
+
+**Challenge:** Nearly every component of a data platform runs on Linux — orchestrator workers, Spark clusters, containers, CI runners, and cloud virtual machines. These environments have no graphical interface, so investigating a failed job means working in a terminal: reading logs, inspecting files, and checking processes.
+
+**Solution:** The shell provides small, composable tools for inspecting files, filtering text, and automating repetitive tasks. A short pipeline of commands can answer an operational question — such as how many records failed in yesterday's run — in seconds, without writing a program.
+
+```
+The Unix idea: small tools, each doing one thing, connected by pipes
+
+  cat app.log  |  grep ERROR  |  cut -d' ' -f4  |  sort  |  uniq -c  |  sort -rn  |  head
+  read file       keep errors    pick 4th field    group    count       rank          top 10
+```
+
+**Typical uses:** previewing large files without loading them, following the log of a running job, transferring files to and from object storage, writing wrapper scripts with retries, and scheduling simple jobs with cron.
+
+---
+
 ## Table of Contents
 
 **Basics**
@@ -27,6 +44,12 @@
 - [Cron Jobs](#cron-jobs)
 - [Data Engineering Workflows](#data-engineering-workflows)
 - [Useful One-Liners](#useful-one-liners)
+
+**Reference**
+- [Common Pitfalls](#common-pitfalls)
+- [Cheat Sheet](#cheat-sheet)
+- [Interview Questions](#interview-questions)
+- [Further Reading](#further-reading)
 
 ---
 
@@ -616,6 +639,82 @@ time python pipeline.py --date 2024-03-15
 # Run multiple commands in parallel
 parallel python process.py --date {} ::: 2024-01-01 2024-01-02 2024-01-03
 ```
+
+---
+
+## Common Pitfalls
+
+| Pitfall | Symptom | Fix |
+|---------|---------|-----|
+| Scripts without `set -euo pipefail` | A step fails, the script keeps going and loads partial data | Put `set -euo pipefail` at the top of every script |
+| Unquoted variables (`rm -rf $DIR/*`) | Filenames with spaces break; an empty `$DIR` becomes `rm -rf /*` | Always quote: `"$DIR"`; use `${DIR:?}` to fail if unset |
+| Relative paths in cron jobs | Works in your terminal, fails silently under cron | Cron has a minimal environment: use absolute paths, set `PATH`, `cd` explicitly |
+| Cron output not redirected | Failures vanish (or fill up local mail) | `>> /var/log/job.log 2>&1` on every cron line |
+| `cat file \| grep` / `wc -l` on huge files for row counts | Slow, and `wc -l` counts newlines inside quoted CSV fields | Fine for quick checks; for real counts use DuckDB/pandas which parse CSV properly |
+| Parsing CSV with `cut -d','` | Wrong columns when a field contains a quoted comma | Use `csvkit`, `mlr` (Miller), or DuckDB for real CSVs |
+| `export $(cat .env \| xargs)` with spaces/quotes in values | Variables get split or mangled | `set -a; source .env; set +a` |
+| `kill -9` as the first resort | Process can't clean up: temp files, locks, half-written output | `kill` (SIGTERM) first; `-9` only if it doesn't exit |
+| `date -d` in scripts run on macOS | `illegal option -- d` | GNU `date` is Linux-only; use `gdate` on macOS or do date math in Python |
+
+---
+
+## Cheat Sheet
+
+| Task | Command |
+|------|---------|
+| Preview a file | `head -5 f.csv` · `tail -f app.log` · `less f.csv` |
+| Row count | `wc -l < f.csv` |
+| Column names, one per line | `head -1 f.csv \| tr ',' '\n'` |
+| Search logs | `grep -n -E "ERROR\|WARN" app.log` |
+| Search recursively | `grep -rn "pattern" dir/` |
+| Frequency count of a column | `cut -d, -f3 f.csv \| sort \| uniq -c \| sort -rn` |
+| Sum a column | `awk -F, 'NR>1 {s+=$3} END {print s}' f.csv` |
+| Replace text in place | `sed -i 's/old/new/g' file` |
+| Find big files | `du -ah dir \| sort -rh \| head -20` |
+| Disk free | `df -h` |
+| Find files changed today | `find /data -name "*.csv" -mtime -1` |
+| Run in background, survive logout | `nohup cmd > out.log 2>&1 &` |
+| Is it running? | `pgrep -fa pipeline.py` |
+| Copy to/from server | `rsync -avz src/ user@host:/dst/` |
+| Tunnel to a private DB | `ssh -L 5432:db:5432 user@bastion` |
+| Load a `.env` | `set -a; source .env; set +a` |
+| Safe script header | `#!/usr/bin/env bash` + `set -euo pipefail` |
+
+**Redirection:** `>` overwrite · `>>` append · `2>&1` merge stderr into stdout · `| tee f` write to file *and* screen
+
+**Cron:** `min hour day-of-month month day-of-week` — `0 2 * * *` = 2am daily, `*/15 * * * *` = every 15 min
+
+---
+
+## Interview Questions
+
+**Q: What does `set -euo pipefail` do and why should every pipeline script have it?**
+A: `-e` exits the script as soon as any command fails; `-u` treats unset variables as an error instead of silently expanding to an empty string; `-o pipefail` makes a pipeline fail if *any* command in it fails, not just the last one. Without these, a failed extract step can be ignored and the load step runs on empty or partial data — the worst kind of failure because nothing alerts.
+
+**Q: What's the difference between `>` and `>>`, and what does `2>&1` mean?**
+A: `>` redirects stdout to a file, overwriting it; `>>` appends. File descriptor 1 is stdout and 2 is stderr, so `2>&1` sends stderr to wherever stdout is currently going. `cmd > log 2>&1` captures both streams in the log. Order matters: `cmd 2>&1 > log` sends stderr to the terminal, because stdout wasn't redirected yet when stderr was duplicated.
+
+**Q: A cron job works when you run it manually but fails under cron. Why?**
+A: Cron runs with a minimal environment: a different `PATH`, no `.bashrc`, no activated virtualenv, and a different working directory (usually `$HOME`). Fixes: use absolute paths for commands and files, `cd` into the project directory, activate the venv or call its Python directly, load environment variables explicitly, and redirect output to a log so you can see the actual error.
+
+**Q: How would you find which process is using all the memory on a server?**
+A: `top` or `htop` sorted by memory (`M` in top), or `ps aux --sort=-%mem | head`. `free -h` shows overall usage, including how much is just cache. If the process was killed, `dmesg | grep -i oom` shows whether the kernel's OOM killer did it — common with Spark executors or pandas jobs that load too much data.
+
+**Q: How would you quickly check whether yesterday's file landed in S3 and has data?**
+A: `aws s3 ls s3://bucket/orders/dt=$(date -d yesterday +%F)/ --human-readable` lists the files and their sizes. Zero files or zero-byte files means the upstream failed. For a row count without downloading, query it with DuckDB or Athena. In a pipeline, this check belongs in an Airflow sensor, not a manual command.
+
+**Q: What's the difference between SIGTERM and SIGKILL?**
+A: `kill <pid>` sends SIGTERM (15), which asks the process to stop — it can catch the signal, finish writing, release locks, and clean up. `kill -9` sends SIGKILL, which the kernel enforces immediately; the process gets no chance to clean up, which can leave partial files or stale lock files. Always try SIGTERM first.
+
+---
+
+## Further Reading
+
+- [GNU Bash manual](https://www.gnu.org/software/bash/manual/)
+- [ShellCheck](https://www.shellcheck.net/) — linter that catches most bash bugs; run it on every script
+- [explainshell.com](https://explainshell.com/) — paste a command, see what each part does
+- *The Linux Command Line* — William Shotts (free online at [linuxcommand.org](https://linuxcommand.org/tlcl.php))
+- [Miller (`mlr`)](https://miller.readthedocs.io/) — `awk`/`sort`/`cut` that understands CSV and JSON properly
 
 ---
 

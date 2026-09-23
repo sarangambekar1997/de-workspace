@@ -7,27 +7,27 @@
 
 ---
 
-## Plain English: What Does a Data Engineer Actually Do?
+## Overview
 
-A **data engineer** builds and maintains the pipes that move data from where it's created to where it's useful.
+Data engineering is the discipline of building and operating the systems that move data from where it is produced to where it is used — reliably, on time, and with known quality.
 
 ```
 Source systems        Pipelines (you build these)       Consumers
 ─────────────    →    ─────────────────────────    →    ──────────
-Your app's DB         Extract → Transform → Load         Dashboards
-Stripe/Salesforce     Schedule → Monitor → Alert         Data scientists
+Application databases Extract → Transform → Load         Dashboards
+SaaS APIs             Schedule → Monitor → Alert         Data scientists
 Kafka event stream    Handle failures → Retry             ML models
 S3 log files          Ensure quality → Document          Analysts
 ```
 
-**An analogy:** Think of a city's water system. The data engineer is the plumber — not the water company (source systems), not the people who drink the water (analysts/scientists), but the person who lays the pipes, ensures the right pressure, filters out the bad stuff, and makes sure the taps always work.
+**Role in the organization:** Source systems produce data and analysts, data scientists, and applications consume it. The data engineer owns what happens in between: ingestion, transformation, storage layout, orchestration, quality, and the reliability of every step.
 
-**Common day-to-day tasks:**
-- Build a pipeline that loads Stripe payments into Snowflake every hour
-- Fix a DAG that's been failing because the source API changed its schema
-- Optimize a slow dbt model that's timing out in production
-- Set up monitoring to alert when data is stale or has quality issues
-- Help an analyst understand why their revenue numbers don't match
+**Typical responsibilities:**
+- Build a pipeline that loads payment events from a SaaS API into the warehouse every hour
+- Repair a scheduled pipeline after the source API changes its schema
+- Optimize a slow SQL transformation that exceeds its time window
+- Monitor freshness and quality, and alert when data is late or incorrect
+- Trace a discrepancy between two reports back to its root cause
 
 ---
 
@@ -41,6 +41,12 @@ S3 log files          Ensure quality → Document          Analysts
 - [Streaming Concepts](#streaming-concepts)
 - [Orchestration](#orchestration)
 - [Key Tools Landscape](#key-tools-landscape)
+
+**Reference**
+- [Common Pitfalls](#common-pitfalls)
+- [Cheat Sheet](#cheat-sheet)
+- [Interview Questions](#interview-questions)
+- [Further Reading](#further-reading)
 
 ---
 
@@ -294,7 +300,7 @@ Source DB → [Extract] → [Transform in pipeline] → [Load] → Data Warehous
 Modern pattern. Load raw data first, transform **inside** the warehouse.
 
 ```
-Source DB → [Extract] → [Load raw] → Data Warehouse → [Transform with SQL/dbt]
+Source DB → [Extract] → [Load raw] → Data Warehouse → [Transform with SQL]
 ```
 
 - Raw data lands in a staging layer; transformations run as SQL inside the warehouse
@@ -308,15 +314,15 @@ Source DB → [Extract] → [Load raw] → Data Warehouse → [Transform with SQ
 
 A pipeline is **idempotent** if running it multiple times produces the same result as running it once. Critical for safe reruns after failures.
 
-```python
-# NOT idempotent — appends duplicates on rerun
+```sql
+-- NOT idempotent — appends duplicates on rerun
 INSERT INTO orders SELECT * FROM staging_orders WHERE date = '2024-03-15';
 
-# Idempotent — deletes first, then inserts
+-- Idempotent — deletes first, then inserts (run both in one transaction)
 DELETE FROM orders WHERE order_date = '2024-03-15';
 INSERT INTO orders SELECT * FROM staging_orders WHERE date = '2024-03-15';
 
-# Idempotent — upsert pattern
+-- Idempotent — upsert pattern
 INSERT INTO orders (...)
 SELECT ...
 ON CONFLICT (order_id) DO UPDATE SET ...;
@@ -597,13 +603,13 @@ Each task in a DAG should be:
 */15 * * * *   — every 15 minutes
 0 2 * * 1      — every Monday at 2am
 
-# Airflow schedule examples
-schedule_interval='@daily'
-schedule_interval='0 6 * * *'    # 6am UTC daily
-schedule_interval=timedelta(hours=6)
+# Airflow schedule examples (Airflow 2.4+ / 3.x use `schedule=`)
+schedule='@daily'
+schedule='0 6 * * *'             # 6am UTC daily
+schedule=timedelta(hours=6)
 ```
 
-**Important:** in Airflow, `execution_date` is the **start** of the period, not when the task runs. A daily job with `execution_date=2024-03-15` processes data for March 15 and runs on March 16. This trips up almost everyone the first time.
+**Important:** a scheduled Airflow run processes a **data interval** and runs *after* that interval ends: the daily run covering March 15 starts on March 16. In Airflow 2, the run's `logical_date` (formerly `execution_date`) is the interval *start* (March 15); Airflow 3's default cron timetable sets it to the run time instead. Read `data_interval_start` / `data_interval_end` explicitly and you're correct on both. This trips up almost everyone the first time.
 
 ---
 
@@ -698,7 +704,7 @@ SaaS APIs        ──────→ Airbyte        ──→     ↓
 Clickstream      ──────→ Kafka          ──→ Silver (cleaned)    BI tools
                                         ──→     ↓               (Tableau,
                                             Gold (modeled) ───→  Looker,
-                                            (dbt transforms)     Metabase)
+                                            (SQL transforms)     Metabase)
                                                  ↑
                                            Orchestrated by
                                            Airflow / Dagster
@@ -708,6 +714,57 @@ Clickstream      ──────→ Kafka          ──→ Silver (cleaned)
 - **Bronze** — land raw data, never modify it. It's your source of truth for reprocessing.
 - **Silver** — clean, validate, deduplicate. Schema is enforced here.
 - **Gold** — business logic lives here. Star schema, aggregations, metrics.
+
+---
+
+## Common Pitfalls
+
+| Pitfall | Symptom | Fix |
+|---------|---------|-----|
+| Non-idempotent loads (`INSERT` only) | Duplicate rows after every retry or backfill | `MERGE`/upsert on a key, or `DELETE` + `INSERT` for the partition being loaded |
+| Using `NOW()` / `CURRENT_DATE` inside the pipeline | Backfills silently load today's data for every historical date | Parameterize every run on the logical date the orchestrator passes in |
+| Aggregating on processing time | Metrics shift when a consumer lags or you replay history | Use event time for business metrics; handle late data with watermarks |
+| Modifying or deleting Bronze data | Can't reprocess after a bug — the raw truth is gone | Keep Bronze append-only and immutable; fix things in Silver |
+| Over-partitioning (e.g. by hour + user_id) | Millions of tiny files, slow planning, high metadata cost | Partition by low-cardinality columns (usually date); aim for 100 MB–1 GB partitions; cluster on the rest |
+| Relying on `updated_at` for incremental loads | Hard deletes and rows updated without touching `updated_at` are missed | Use CDC from the transaction log, or add periodic full reconciliation |
+| Assuming exactly-once delivery | Occasional duplicates in downstream tables | Design for at-least-once and deduplicate on a stable key |
+| Choosing streaming because it sounds modern | Twice the operational complexity for a dashboard refreshed daily | Start with batch; move to streaming only when latency is a real business requirement |
+| No freshness or volume checks | Stakeholders notice stale dashboards before you do | Alert on `MAX(event_time)` lag and on row counts vs a trailing average |
+
+---
+
+## Cheat Sheet
+
+**Pick the architecture**
+
+| Question | If yes | If no |
+|----------|--------|-------|
+| Need results in seconds? | Streaming (Kafka + Flink/Spark) | Batch |
+| Mostly SQL-savvy team, cloud warehouse? | ELT (SQL transformations in the warehouse) | ETL in Spark/Python |
+| Many engines reading the same data? | Lakehouse with Iceberg | Warehouse-native tables |
+| Table under ~1 GB and cheap to reload? | Full load | Incremental (watermark or CDC) |
+| Source DB exposes a transaction log? | CDC (Debezium) | `updated_at` watermark + periodic reconciliation |
+
+**Core definitions**
+
+| Term | One-liner |
+|------|-----------|
+| OLTP / OLAP | Run the app (small writes) / answer questions (big reads) |
+| Medallion | Bronze = raw, Silver = clean, Gold = business-ready |
+| Idempotent | Running twice gives the same result as running once |
+| Partition pruning | Skip whole partitions that can't match the filter |
+| Watermark | How late an event can arrive and still be counted |
+| SCD Type 2 | New row per change, with `valid_from` / `valid_to` / `is_current` |
+
+**Formats**
+
+| Need | Use |
+|------|-----|
+| Analytics on a lake | Parquet (+ Iceberg/Delta for ACID) |
+| Kafka messages with schema evolution | Avro + Schema Registry |
+| Hand-off to humans or legacy tools | CSV |
+| API payloads, raw landing | JSON / NDJSON |
+| Compression default | ZSTD (or Snappy for speed) |
 
 ---
 
@@ -733,6 +790,17 @@ A: A data lake stores raw files in any format on cheap object storage (S3) — f
 
 **Q: What is a data contract and when would you need one?**
 A: A data contract is a formal agreement between the producer of a dataset and its consumers — specifying schema, data types, SLA (freshness guarantee), quality rules, and ownership. You need one when multiple teams depend on a dataset: the contract prevents the upstream team from silently breaking downstream pipelines with schema changes or delayed delivery.
+
+---
+
+## Further Reading
+
+- *Fundamentals of Data Engineering* — Joe Reis & Matt Housley (O'Reilly). The best overview of the whole lifecycle.
+- *Designing Data-Intensive Applications* — Martin Kleppmann (O'Reilly). Storage, replication, partitioning, streams, from first principles.
+- *The Data Warehouse Toolkit* — Ralph Kimball & Margy Ross (Wiley). The original source for star schemas and SCDs.
+- *Streaming Systems* — Tyler Akidau, Slava Chernyak & Reuven Lax (O'Reilly). Event time, watermarks, and windowing explained properly.
+- [Apache Parquet documentation](https://parquet.apache.org/docs/)
+- [Debezium documentation](https://debezium.io/documentation/)
 
 ---
 

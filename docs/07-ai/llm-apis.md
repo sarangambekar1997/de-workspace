@@ -7,10 +7,25 @@
 
 ---
 
+## Overview
+
+**Challenge:** Chat interfaces suit one-off questions, but automated workloads — classifying millions of support tickets, extracting fields from invoices every hour, or summarizing failed job logs — require calling the model programmatically.
+
+**Solution:** an LLM API is an HTTP endpoint, usually accessed through an SDK, that accepts a model name, instructions, input, and settings, and returns generated content with token usage. It is an external service like any other in a pipeline, with the same concerns: authentication, rate limits, retries, cost, latency, and logging.
+
+```
+your code ──→ client.messages.create(model, system, messages, tools, ...) ──→ LLM provider
+          ←── content blocks (thinking / text / tool_use) + usage (tokens) ←──
+```
+
+**Key design constraints:** *tokens* (billing is per input and output token, and context windows are finite), *latency* (seconds rather than milliseconds — use streaming, batching, or concurrency), and *non-determinism* (validate outputs rather than trusting them).
+
+---
+
 ## Table of Contents
 
 **Basic**
-- [Overview](#overview)
+- [Provider Comparison](#provider-comparison)
 - [Anthropic SDK Setup](#anthropic-sdk-setup)
 - [First API Call](#first-api-call)
 - [OpenAI SDK Setup](#openai-sdk-setup)
@@ -27,20 +42,28 @@
 - [Batching](#batching)
 - [Production Patterns](#production-patterns)
 
+**Reference**
+- [Common Pitfalls](#common-pitfalls)
+- [Cheat Sheet](#cheat-sheet)
+- [Interview Questions](#interview-questions)
+- [Further Reading](#further-reading)
+
 ---
 
-## Overview
+## Provider Comparison
 
 | | Anthropic | OpenAI |
 |-|-----------|--------|
-| **Top model** | Claude Opus 5.5 | GPT-4o |
-| **Fast model** | Claude Haiku 4.5 | GPT-4o-mini |
+| **Top model** | Claude Fable 5.1 (most capable) · Claude Opus 5 | GPT-5 family |
+| **Fast model** | Claude Haiku 4.5 | Smaller GPT-5 variants |
 | **API style** | Messages API | Chat Completions |
 | **Tool use** | Yes | Yes (function calling) |
 | **Vision** | Yes | Yes |
-| **Structured output** | Via prompt / tool | `response_format: json_object` |
+| **Structured output** | Native JSON schema (`output_config.format`, `messages.parse`) | `response_format` with a JSON schema |
 | **Prompt caching** | Yes (explicit) | Yes (automatic) |
 | **Python SDK** | `anthropic` | `openai` |
+
+> Model names change often — check [Anthropic's models overview](https://docs.claude.com/en/docs/about-claude/models/overview) and [OpenAI's models page](https://platform.openai.com/docs/models) before choosing. OpenAI examples below use `gpt-4o`; swap in a current model.
 
 ---
 
@@ -69,10 +92,11 @@ ANTHROPIC_API_KEY=sk-ant-...
 ### Model IDs (Claude)
 
 ```python
-# Current models (as of mid-2025)
-CLAUDE_OPUS    = "claude-opus-5-5"        # most capable
-CLAUDE_SONNET  = "claude-sonnet-5"         # balanced
-CLAUDE_HAIKU   = "claude-haiku-4-5-20251001"  # fastest, cheapest
+# Current models (as of September 2026) — list them live with client.models.list()
+CLAUDE_FABLE   = "claude-fable-5-1"       # most capable, premium price
+CLAUDE_OPUS    = "claude-opus-5"          # default for demanding work (claude-opus-5-5 is launching)
+CLAUDE_SONNET  = "claude-sonnet-5"        # balanced cost and quality
+CLAUDE_HAIKU   = "claude-haiku-4-5"       # fastest, cheapest
 ```
 
 ---
@@ -92,7 +116,7 @@ message = client.messages.create(
     ]
 )
 
-print(message.content[0].text)
+print(next(b.text for b in message.content if b.type == "text"))
 ```
 
 ### With a system prompt
@@ -113,13 +137,12 @@ message = client.messages.create(
 ```python
 message.id            # unique message ID
 message.model         # model used
-message.stop_reason   # "end_turn" | "max_tokens" | "stop_sequence" | "tool_use"
-message.usage         # Usage(input_tokens=45, output_tokens=210)
-message.content       # list of content blocks
+message.stop_reason   # "end_turn" | "max_tokens" | "stop_sequence" | "tool_use" | "pause_turn" | "refusal"
+message.usage         # Usage(input_tokens=45, output_tokens=210, ...)
+message.content       # list of content blocks: "thinking", "text", "tool_use", ...
 
-# Text response
-message.content[0].text
-message.content[0].type  # "text"
+# Text response — current models may return a thinking block first, so find the text block
+next(b.text for b in message.content if b.type == "text")
 ```
 
 ---
@@ -160,8 +183,9 @@ response.usage.total_tokens
 |-----------|-------------|----------------|
 | `model` | Which model to use | see model IDs above |
 | `max_tokens` | Max output tokens | 256–4096 for most tasks |
-| `temperature` | Randomness (0=deterministic, 1=creative) | 0 for data tasks, 0.7 for creative |
-| `top_p` | Nucleus sampling (alternative to temperature) | 0.9–1.0 |
+| `temperature` | Randomness (0=deterministic, 1=creative) | 0 for data tasks, 0.7 for creative — **Haiku 4.5 and older only**; Sonnet 5 / Opus 5+ return a 400 |
+| `top_p` | Nucleus sampling (alternative to temperature) | Same restriction as `temperature` |
+| `output_config` | Effort (`{"effort": "low"…"max"}`) and structured output format | The main control on current Claude models |
 | `stop_sequences` | Stop generation at these strings | `["\n\n", "END"]` |
 | `system` | System prompt (Anthropic) | Instructions, persona, format |
 
@@ -174,12 +198,13 @@ message = client.messages.create(
     messages=[{"role": "user", "content": "Extract the table name from: SELECT * FROM orders"}]
 )
 
-# For creative content generation — want variation
+# For creative content generation on current models — no sampling params (they return a 400);
+# ask for variety in the prompt and tune effort instead
 message = client.messages.create(
     model="claude-sonnet-5",
     max_tokens=1024,
-    temperature=0.8,
-    messages=[{"role": "user", "content": "Write 3 different error message suggestions for a failed pipeline."}]
+    output_config={"effort": "low"},   # low | medium | high | xhigh | max
+    messages=[{"role": "user", "content": "Write 3 clearly different error message suggestions for a failed pipeline."}]
 )
 ```
 
@@ -261,8 +286,8 @@ tools = [
                 },
                 "database": {
                     "type": "string",
-                    "description": "Target database: 'snowflake' or 'bigquery'",
-                    "enum": ["snowflake", "bigquery"]
+                    "description": "Target SQL dialect",
+                    "enum": ["postgres", "bigquery", "snowflake", "redshift", "spark"]
                 }
             },
             "required": ["query", "database"]
@@ -397,13 +422,37 @@ message = client.messages.create(
 
 ## Structured Outputs
 
-### Anthropic: tool-based structured output
+### Anthropic: native structured outputs (recommended)
 
 ```python
-# Use a tool as a structured output schema — most reliable approach
+from pydantic import BaseModel
+
+class PipelineMetadata(BaseModel):
+    pipeline_name: str
+    schedule: str | None
+    source_system: str
+    destination: str
+    is_incremental: bool
+    estimated_rows: int | None
+
+response = client.messages.parse(
+    model="claude-sonnet-5",
+    max_tokens=1024,
+    messages=[{"role": "user", "content": "We have a nightly job that pulls 50k new transactions from the payments API and loads them into the warehouse at 2am."}],
+    output_format=PipelineMetadata,
+)
+metadata = response.parsed_output     # validated PipelineMetadata instance
+```
+
+### Anthropic: tool-based structured output
+
+Useful when the model should *choose* between several tools. Add `"strict": True` to guarantee the arguments match the schema. Forcing a specific tool (`tool_choice={"type": "tool", ...}`) returns a 400 on Claude Opus 5.5 and Fable 5.1 — use native structured outputs there.
+
+```python
 tools = [{
     "name": "extract_pipeline_metadata",
     "description": "Extract structured metadata from a pipeline description",
+    "strict": True,
     "input_schema": {
         "type": "object",
         "properties": {
@@ -414,7 +463,9 @@ tools = [{
             "is_incremental": {"type": "boolean"},
             "estimated_rows": {"type": "integer"}
         },
-        "required": ["pipeline_name", "source_system", "destination"]
+        "required": ["pipeline_name", "schedule", "source_system", "destination",
+                     "is_incremental", "estimated_rows"],
+        "additionalProperties": False
     }
 }]
 
@@ -423,7 +474,7 @@ response = client.messages.create(
     max_tokens=512,
     tools=tools,
     tool_choice={"type": "tool", "name": "extract_pipeline_metadata"},  # force this tool
-    messages=[{"role": "user", "content": "We have a nightly job that pulls 50k new transactions from Stripe and loads them into Snowflake at 2am."}]
+    messages=[{"role": "user", "content": "We have a nightly job that pulls 50k new transactions from the payments API and loads them into the warehouse at 2am."}]
 )
 
 # Extract the structured result
@@ -431,12 +482,14 @@ for block in response.content:
     if block.type == "tool_use":
         metadata = block.input
         print(metadata)
-# {'pipeline_name': 'stripe_transactions_load', 'schedule': '0 2 * * *',
-#  'source_system': 'Stripe', 'destination': 'Snowflake',
+# {'pipeline_name': 'payments_transactions_load', 'schedule': '0 2 * * *',
+#  'source_system': 'payments API', 'destination': 'warehouse',
 #  'is_incremental': True, 'estimated_rows': 50000}
 ```
 
-### OpenAI: json_object mode
+### OpenAI: JSON mode
+
+`json_object` only guarantees *valid JSON*; for schema-valid output use `response_format={"type": "json_schema", ...}` or the SDK's `client.chat.completions.parse(..., response_format=PydanticModel)`.
 
 ```python
 from openai import OpenAI
@@ -449,7 +502,7 @@ response = client.chat.completions.create(
     response_format={"type": "json_object"},
     messages=[
         {"role": "system", "content": "Always respond with valid JSON."},
-        {"role": "user",   "content": "Extract pipeline name, schedule, and source from: nightly Stripe→Snowflake job at 2am"}
+        {"role": "user",   "content": "Extract pipeline name, schedule, and source from: nightly payments-API-to-warehouse job at 2am"}
     ]
 )
 
@@ -528,7 +581,7 @@ while True:
 
 # Retrieve results
 for result in client.messages.batches.results(batch.id):
-    print(result.custom_id, result.result.message.content[0].text)
+    print(result.custom_id, next(b.text for b in result.result.message.content if b.type == "text"))
 ```
 
 ---
@@ -561,12 +614,16 @@ def call_with_retry(client, max_retries=3, **kwargs):
 ### Cost tracking
 
 ```python
-# Approximate cost calculation (check current pricing)
+# Approximate cost calculation — USD per 1M tokens, as of September 2026.
+# Prices change: keep this table in config and check https://www.anthropic.com/pricing
 PRICING = {
-    "claude-sonnet-5":          {"input": 3.00,  "output": 15.00},   # per 1M tokens
-    "claude-haiku-4-5-20251001": {"input": 0.80,  "output": 4.00},
-    "claude-opus-5-5":           {"input": 15.00, "output": 75.00},
+    "claude-fable-5-1":          {"input": 10.00, "output": 50.00},
+    "claude-opus-5":             {"input": 5.00,  "output": 25.00},
+    "claude-sonnet-5":           {"input": 2.00,  "output": 10.00},
+    "claude-haiku-4-5":          {"input": 1.00,  "output": 5.00},
+    "claude-haiku-4-5-20251001": {"input": 1.00,  "output": 5.00},
 }
+# Ignores cache pricing (reads ~0.1x input, writes ~1.25x) and the 50% batch discount
 
 def estimate_cost(response) -> float:
     model = response.model
@@ -596,7 +653,7 @@ async def classify(text: str, idx: int) -> dict:
         temperature=0,
         messages=[{"role": "user", "content": f"Classify as PASS or FAIL: {text}"}]
     )
-    return {"idx": idx, "result": response.content[0].text.strip()}
+    return {"idx": idx, "result": next(b.text for b in response.content if b.type == "text").strip()}
 
 async def classify_all(texts: list[str]) -> list[dict]:
     tasks = [classify(text, i) for i, text in enumerate(texts)]
@@ -630,6 +687,85 @@ def log_llm_call(func):
 def create_message(client, **kwargs):
     return client.messages.create(**kwargs)
 ```
+
+---
+
+## Common Pitfalls
+
+| Pitfall | Symptom | Fix |
+|---------|---------|-----|
+| Reading `response.content[0].text` | Crashes or returns empty text when the first block is a thinking or tool block | Iterate the blocks and pick `type == "text"` |
+| Not checking `stop_reason` | Truncated JSON (`max_tokens`), unhandled tool calls, or silent refusals | Handle `max_tokens`, `tool_use`, `pause_turn`, and `refusal` explicitly |
+| `max_tokens` set too low | Output cut off mid-sentence or mid-JSON | Generous limits (thousands, not hundreds) for generation; stream long outputs |
+| Copying parameters between models | 400 errors — e.g. `temperature` on Sonnet 5 / Opus 5, assistant prefill on the 4.6+ family | Check the model's supported parameters; control behavior with `effort` and structured outputs |
+| API keys in code or notebooks | Leaked keys and surprise bills | Environment variables or a secrets manager; separate keys per environment with spend limits |
+| Unbounded `asyncio.gather` over thousands of calls | 429 rate-limit storms | Cap concurrency with a semaphore; the Batch API for offline work |
+| Rebuilding a big identical prefix on every call | Paying full input price for the same system prompt and documents | Prompt caching — stable content first, `cache_control` on it |
+| Synchronous calls in a row-by-row pipeline | Jobs that take days | Batch API (50% cheaper, asynchronous) or bounded concurrency |
+| No logging of prompts, outputs, and token usage | Can't debug bad outputs or explain the bill | Log model, prompt version, tokens, latency, stop reason, and request ID |
+| Trusting output as data | Invalid values flow into the warehouse | Validate with schemas; quarantine failures like any bad record |
+
+---
+
+## Cheat Sheet
+
+| Task | Anthropic (Python) |
+|------|--------------------|
+| Basic call | `client.messages.create(model="claude-sonnet-5", max_tokens=1024, messages=[{"role": "user", "content": "..."}])` |
+| Get the text | `next(b.text for b in r.content if b.type == "text")` |
+| System prompt | `system="You are..."` |
+| Reasoning depth | `output_config={"effort": "low"\|"medium"\|"high"\|"xhigh"\|"max"}` |
+| Stream | `with client.messages.stream(...) as s: for t in s.text_stream: ...` → `s.get_final_message()` |
+| Structured output | `client.messages.parse(..., output_format=PydanticModel).parsed_output` |
+| Tools | `tools=[{"name", "description", "input_schema", "strict": True}]` → handle `tool_use` → send back `tool_result` |
+| Cache a big prefix | `cache_control={"type": "ephemeral"}` (top-level automatic) or on a specific block |
+| Count tokens before sending | `client.messages.count_tokens(model=..., messages=...)` |
+| Bulk offline jobs | `client.messages.batches.create(requests=[...])` → poll → `batches.results(id)` |
+| Available models | `client.models.list()` |
+| Retries / timeouts | `anthropic.Anthropic(max_retries=5, timeout=60.0)` |
+
+| Concept | Anthropic | OpenAI |
+|---------|-----------|--------|
+| Endpoint | Messages API | Responses / Chat Completions |
+| System prompt | `system=` parameter | `system`/`developer` message or `instructions` |
+| Output location | `content` blocks | `choices[0].message.content` / `output` items |
+| JSON schema output | `output_config.format` / `messages.parse` | `response_format` / `.parse()` |
+| Usage | `usage.input_tokens`, `usage.output_tokens` | `usage.prompt_tokens`, `usage.completion_tokens` |
+| Offline discount | Message Batches (50%) | Batch API (50%) |
+
+**Choosing a model:** start with a mid-tier model (Sonnet) and measure on your eval set · move up (Opus, Fable) when quality falls short · move down (Haiku) for high-volume classification or extraction once evals prove it's good enough
+
+---
+
+## Interview Questions
+
+**Q: What are tokens, and why do they matter when you use an LLM API?**
+A: Tokens are the units models read and write — roughly 3–4 characters of English text on average. They matter three ways: cost (billed per input and output token, with output usually several times pricier), limits (context window and `max_tokens` cap how much fits in and comes out), and latency (output tokens are generated sequentially, so long outputs take longer). Count tokens before large calls, and design prompts and outputs to be as short as the task allows.
+
+**Q: How would you process a million records with an LLM in a data pipeline?**
+A: Offline, with the provider's batch API — roughly half price, with results in hours — submitting records in chunks, keyed by a `custom_id` so results can be joined back regardless of order. Use a cheap model validated on a sample, cache the shared instructions, and request structured output. Treat it like any pipeline: make it idempotent (skip records already processed), validate and quarantine bad outputs, track cost per run, and write results to a table with the model and prompt version recorded.
+
+**Q: What is prompt caching and when does it help?**
+A: The provider stores the processed prefix of a prompt — system instructions, tool definitions, large documents — so later requests with the same prefix are cheaper (on Claude, cache reads cost about a tenth of normal input) and faster. It helps when a large, stable prefix is reused across many calls: RAG with a fixed knowledge base, long system prompts, multi-turn conversations, agent loops. Caching is a prefix match, so put stable content first and anything varying (timestamps, user questions) after it.
+
+**Q: How do you handle rate limits and transient errors?**
+A: Retry 429s and 5xx errors with exponential backoff and jitter, respecting the `retry-after` header — the official SDKs do this automatically with a configurable retry count. Don't retry 4xx client errors like invalid requests. At the system level, cap concurrency, spread load with queues or batch APIs, and alert when retries or error rates climb.
+
+**Q: How does tool use (function calling) work?**
+A: You describe tools with a name, a description, and a JSON schema for the inputs. The model decides whether to call one and returns a `tool_use` block with arguments instead of (or before) a final answer. Your code executes the tool, sends the result back as a `tool_result`, and the model continues — possibly calling more tools — until it produces a final answer. The model never executes anything itself; your code stays in control of what actually runs.
+
+**Q: Why might the same prompt give different answers on different runs, and how do you deal with it?**
+A: Generation involves sampling, and current reasoning models don't expose a temperature knob at all, so outputs vary. For pipelines, reduce variance where it matters: constrain outputs with structured schemas or enumerations, give clear rubrics and examples, validate results in code, and measure consistency on an eval set. When you need a stable answer for a given input, store it rather than regenerating it.
+
+---
+
+## Further Reading
+
+- [Claude API documentation](https://docs.claude.com/en/api/overview) and [Python SDK](https://github.com/anthropics/anthropic-sdk-python)
+- [Claude models overview](https://docs.claude.com/en/docs/about-claude/models/overview) and [pricing](https://www.anthropic.com/pricing)
+- [Prompt caching](https://docs.claude.com/en/docs/build-with-claude/prompt-caching) and [Message Batches](https://docs.claude.com/en/docs/build-with-claude/batch-processing)
+- [OpenAI API reference](https://platform.openai.com/docs/api-reference)
+- [Anthropic Cookbook](https://github.com/anthropics/anthropic-cookbook) — runnable notebooks for tool use, RAG, extraction, and more
 
 ---
 

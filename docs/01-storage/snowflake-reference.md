@@ -7,6 +7,25 @@
 
 ---
 
+## Overview
+
+**Challenge:** Traditional databases couple storage and compute on the same servers. Heavy workloads such as month-end reporting slow down every other user, and growing data volumes force larger servers whether or not more compute is needed.
+
+**Solution:** Snowflake is a cloud data warehouse that keeps data in a single central store and runs queries on independent compute clusters ("virtual warehouses"). Loading, transformation, BI, and data science workloads each receive their own compute, do not contend with one another, and suspend automatically when idle.
+
+```
+                 One copy of the data (cloud object storage)
+                                   │
+        ┌──────────────────────────┼──────────────────────────┐
+   LOADING_WH (S)            TRANSFORM_WH (L)            BI_WH (M, multi-cluster)
+   Snowpipe / COPY            dbt runs at 2am             Tableau / Looker, 9–5
+   pay only while running     pay only while running      scales out when busy
+```
+
+**Additional capabilities:** standard SQL with useful extensions (`QUALIFY`, `FLATTEN`), native semi-structured data handling, time travel for recovering from mistakes, zero-copy cloning for development environments, and minimal tuning — no indexes or vacuuming.
+
+---
+
 ## Table of Contents
 
 **Basics**
@@ -30,6 +49,12 @@
 - [Cost Management](#cost-management)
 - [Access Control & RBAC](#access-control--rbac)
 - [Snowflake-Specific SQL](#snowflake-specific-sql)
+
+**Reference**
+- [Common Pitfalls](#common-pitfalls)
+- [Cheat Sheet](#cheat-sheet)
+- [Interview Questions](#interview-questions)
+- [Further Reading](#further-reading)
 
 ---
 
@@ -210,10 +235,19 @@ SELECT * FROM orders SAMPLE (1000 ROWS);     -- exactly 1000 rows
 CREATE STAGE my_internal_stage
     FILE_FORMAT = (TYPE = CSV FIELD_OPTIONALLY_ENCLOSED_BY = '"' SKIP_HEADER = 1);
 
--- External stage — your S3 bucket
+-- External stage — your S3 bucket, authenticated via a storage integration
+-- (an IAM role Snowflake assumes — no access keys stored in Snowflake)
+CREATE STORAGE INTEGRATION s3_int
+    TYPE = EXTERNAL_STAGE
+    STORAGE_PROVIDER = 'S3'
+    ENABLED = TRUE
+    STORAGE_AWS_ROLE_ARN = 'arn:aws:iam::123456789012:role/snowflake-s3-read'
+    STORAGE_ALLOWED_LOCATIONS = ('s3://my-bucket/data/');
+-- DESC INTEGRATION s3_int;  → copy the IAM user ARN + external ID into the role's trust policy
+
 CREATE STAGE my_s3_stage
     URL = 's3://my-bucket/data/'
-    CREDENTIALS = (AWS_KEY_ID = '...' AWS_SECRET_KEY = '...')
+    STORAGE_INTEGRATION = s3_int
     FILE_FORMAT = (TYPE = PARQUET);
 
 -- List files in a stage
@@ -509,8 +543,9 @@ SELECT COUNT(*) FROM orders;
 -- Disable result cache for benchmarking
 ALTER SESSION SET USE_CACHED_RESULT = FALSE;
 
--- Cache is shared across users for the same warehouse
--- Invalidated when underlying table changes
+-- Cache lives in the cloud services layer — reused across users and warehouses
+-- when the query text is identical and the role can access the tables
+-- Invalidated when underlying data changes (or after 24h without reuse)
 ```
 
 ---
@@ -529,8 +564,10 @@ ALTER TABLE events CLUSTER BY (user_id, DATE(event_time));
 -- Check clustering depth (lower = better; >6 means recluster)
 SELECT SYSTEM$CLUSTERING_INFORMATION('orders', '(DATE(created_at))');
 
--- Manual reclustering (usually automatic in Enterprise)
-ALTER TABLE orders RECLUSTER;
+-- Reclustering is automatic (Automatic Clustering service, billed in credits)
+-- Pause / resume it per table to control cost
+ALTER TABLE orders SUSPEND RECLUSTER;
+ALTER TABLE orders RESUME RECLUSTER;
 
 -- Drop a clustering key
 ALTER TABLE orders DROP CLUSTERING KEY;
@@ -680,6 +717,91 @@ SELECT dept,
 FROM employees
 GROUP BY dept;
 ```
+
+---
+
+## Common Pitfalls
+
+| Pitfall | Symptom | Fix |
+|---------|---------|-----|
+| Warehouses with long (or no) `AUTO_SUSPEND` | Credits burn all night with nothing running | `AUTO_SUSPEND = 60` for most warehouses; set resource monitors with credit quotas |
+| One big shared warehouse for everything | ETL and dashboards slow each other down; you can't attribute cost | Separate warehouses per workload (load / transform / BI / ad hoc) |
+| Scaling *up* to fix concurrency (or *out* to fix a slow query) | Cost rises but the problem doesn't go away | Slow single query → larger size; many queued queries → multi-cluster |
+| Wrapping filtered columns in functions (`WHERE TO_DATE(ts) = ...`) | Poor pruning — scans every micro-partition | Filter on the raw column with a range; cluster on the expression if you must |
+| Clustering keys on small or rarely filtered tables | Automatic Clustering credits with no speed-up | Only for multi-TB tables with consistent filters and poor pruning in the Query Profile |
+| `TIMESTAMP_LTZ` / `NTZ` mixed carelessly | Values shift by hours depending on the session timezone | Store UTC in `TIMESTAMP_NTZ` (or use `TIMESTAMP_TZ`), and set the account timezone explicitly |
+| Access keys in stage definitions | Long-lived credentials inside Snowflake | Storage integrations (IAM role assumption) |
+| Password-only service users | Blocked or flagged as Snowflake enforces MFA and phases out single-factor passwords | Key-pair auth (or OAuth) for service/pipeline users |
+| Granting to users instead of roles; using `ACCOUNTADMIN` day to day | Permission sprawl, risky mistakes | RBAC hierarchy: access roles → functional roles → users; `SYSADMIN` for objects, `ACCOUNTADMIN` locked down |
+| Forgetting `FUTURE` grants | New tables created by dbt are invisible to analysts | `GRANT SELECT ON FUTURE TABLES IN SCHEMA ...` |
+| Consuming a stream in a task that fails midway | Assuming changes were lost (or processed twice) | A stream only advances when the DML that reads it commits; wrap consumption in a single transaction |
+| Big `SELECT *` over wide VARIANT data | Slow and expensive | Flatten frequently used JSON paths into typed columns in Silver |
+
+---
+
+## Cheat Sheet
+
+| Task | SQL |
+|------|-----|
+| Top N per group | `... QUALIFY ROW_NUMBER() OVER (PARTITION BY k ORDER BY ts DESC) = 1` |
+| JSON path | `payload:user.id::NUMBER` |
+| Explode array | `, LATERAL FLATTEN(INPUT => payload:items) f` → `f.value:sku::STRING` |
+| Safe cast | `TRY_CAST(x AS NUMBER(12,2))` · `TRY_TO_DATE(s)` |
+| Load files | `COPY INTO t FROM @stage/path FILE_FORMAT=(TYPE=PARQUET) MATCH_BY_COLUMN_NAME=CASE_INSENSITIVE` |
+| Continuous load | `CREATE PIPE p AUTO_INGEST=TRUE AS COPY INTO ...` |
+| Query the past | `SELECT ... FROM t AT(OFFSET => -3600)` · `BEFORE(STATEMENT => '<query_id>')` |
+| Undo a drop | `UNDROP TABLE t` |
+| Dev copy of prod | `CREATE DATABASE dev CLONE prod` |
+| CDC on a table | `CREATE STREAM s ON TABLE t` → read `METADATA$ACTION`, `METADATA$ISUPDATE` |
+| Scheduled SQL | `CREATE TASK ... SCHEDULE='USING CRON 0 * * * * UTC' AS ...` → `ALTER TASK ... RESUME` |
+| Declarative pipelines | `CREATE DYNAMIC TABLE ... TARGET_LAG = '15 minutes' WAREHOUSE = wh AS SELECT ...` |
+| Resize | `ALTER WAREHOUSE wh SET WAREHOUSE_SIZE = 'LARGE'` |
+| Cap spend | `CREATE RESOURCE MONITOR rm WITH CREDIT_QUOTA = 100 TRIGGERS ON 100 PERCENT DO SUSPEND` |
+| Who can see what | `SHOW GRANTS TO ROLE r` · `SHOW GRANTS ON TABLE t` |
+| Last query's ID | `SELECT LAST_QUERY_ID()` |
+
+**Warehouse sizing:** each size step doubles credits/hour (XS=1, S=2, M=4, L=8, XL=16…) and roughly halves the runtime of queries that parallelize well — so a bigger warehouse can cost the same while finishing faster.
+
+**Table types:** permanent (time travel + 7-day fail-safe) · transient (no fail-safe — staging) · temporary (session only) · external (query files in place) · Iceberg (open format in your own bucket)
+
+---
+
+## Interview Questions
+
+**Q: Explain Snowflake's architecture.**
+A: Three independent layers. Storage: data is kept as compressed, columnar, immutable micro-partitions in cloud object storage. Compute: virtual warehouses — independent clusters that read that storage, scale up (size) or out (multi-cluster), and suspend when idle, billed per second. Cloud services: authentication, metadata, the optimizer, transactions, and the result cache. Because storage and compute are separate, many workloads can query the same data concurrently without contention, and each scales and is billed independently.
+
+**Q: What are micro-partitions and how does pruning work?**
+A: Snowflake automatically splits tables into immutable micro-partitions (~50–500 MB uncompressed) and records metadata for each — min/max values per column, distinct counts, and null counts. At query time the optimizer compares filter predicates against that metadata and skips partitions that can't match. Pruning works best when data is naturally ordered by the filter column (e.g. loaded by date); a clustering key can restore that order for large tables with a different access pattern.
+
+**Q: When would you scale a warehouse up versus out?**
+A: Scale *up* (a larger size) when individual queries are slow or spill to disk — more memory and CPU per query. Scale *out* (multi-cluster) when many concurrent queries are queuing — more clusters serve more users, but no single query gets faster. The Query Profile shows spilling; warehouse load history shows queuing.
+
+**Q: What are Streams and Tasks, and how do they work together?**
+A: A stream is a change-tracking object on a table: it records inserts, updates, and deletes since it was last consumed, using an offset rather than a copy of the data. A task runs SQL on a schedule or after another task. Together they form an in-Snowflake incremental pipeline: a task (optionally gated on `SYSTEM$STREAM_HAS_DATA`) `MERGE`s the stream's changes into a target, and the stream's offset advances when that transaction commits. Dynamic tables are the newer, declarative alternative for many of these cases.
+
+**Q: What is the difference between Time Travel and Fail-safe?**
+A: Time Travel lets *you* query, clone, or restore data as it was at an earlier point — 1 day by default, up to 90 days on Enterprise — using `AT`/`BEFORE` and `UNDROP`. Fail-safe is a further 7-day window after Time Travel expires, recoverable only by Snowflake support, meant for disasters. Both add storage cost, which is why transient tables (no fail-safe) are used for staging.
+
+**Q: How does zero-copy cloning work and what is it used for?**
+A: A clone copies metadata only — the new object points to the same micro-partitions as the source, so it's instant and initially free. Once either side changes data, only the changed micro-partitions are stored separately. It's used for dev/test environments cloned from production, backups before risky migrations, and CI databases for dbt PRs.
+
+**Q: How would you control Snowflake costs?**
+A: Auto-suspend every warehouse (60 seconds is typical), right-size per workload and separate workloads for attribution, set resource monitors with quotas, use transient tables and shorter retention for staging, avoid unnecessary clustering, and let the result cache work. Then monitor `ACCOUNT_USAGE` views (`WAREHOUSE_METERING_HISTORY`, `QUERY_HISTORY`) for the most expensive queries and fix those — usually poor pruning, exploding joins, or full refreshes that should be incremental.
+
+**Q: How do you load data into Snowflake?**
+A: Batch with `COPY INTO` from a stage (internal, or external S3/GCS/Azure using a storage integration). It tracks load metadata so files aren't loaded twice. For continuous loading, Snowpipe auto-ingests files as cloud event notifications arrive, and Snowpipe Streaming ingests rows directly (e.g. from the Kafka connector) without files. Managed tools (Fivetran, Airbyte) sit on top of these mechanisms.
+
+---
+
+## Further Reading
+
+- [Snowflake documentation](https://docs.snowflake.com/)
+- [Snowflake key concepts & architecture](https://docs.snowflake.com/en/user-guide/intro-key-concepts)
+- [Micro-partitions & data clustering](https://docs.snowflake.com/en/user-guide/tables-clustering-micropartitions)
+- [Dynamic tables](https://docs.snowflake.com/en/user-guide/dynamic-tables-about)
+- [Managing cost in Snowflake](https://docs.snowflake.com/en/guides-overview-cost)
+- [Snowflake Quickstarts](https://quickstarts.snowflake.com/) — free hands-on tutorials
 
 ---
 

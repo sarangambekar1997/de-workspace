@@ -7,6 +7,27 @@
 
 ---
 
+## Overview
+
+**Challenge:** Source systems store data in the shape the *application* needs — many normalized tables, cryptic column names, status codes, and history overwritten on every update. Answering a simple business question requires complex joins, and different analysts arrive at different results.
+
+**Solution:** Data modeling deliberately shapes data for *analysis*. The most common approach is the **star schema**: a central **fact** table of measured events (orders, clicks, payments) surrounded by **dimension** tables that describe them (customer, product, date).
+
+```
+Application tables (OLTP)                 Analytics model (star schema)
+─────────────────────────                 ─────────────────────────────
+orders, order_items, customers,                    dim_date
+addresses, products, categories,                      │
+promos, payments, refunds ...      →     dim_customer ─ fct_orders ─ dim_product
+(built for fast writes)                               │
+                                                  dim_promo
+                                          (built for simple, fast reads)
+```
+
+**Key design decisions:** the **grain** (what a single row represents) and how **history** is handled when descriptive attributes change (slowly changing dimensions).
+
+---
+
 ## Table of Contents
 
 **Basic**
@@ -24,8 +45,13 @@
 **Advanced**
 - [One Big Table (OBT)](#one-big-table-obt)
 - [Data Vault](#data-vault)
-- [Modeling for dbt](#modeling-for-dbt)
+- [Layered Transformation Architecture](#layered-transformation-architecture)
 - [Common Mistakes](#common-mistakes)
+
+**Reference**
+- [Cheat Sheet](#cheat-sheet)
+- [Interview Questions](#interview-questions)
+- [Further Reading](#further-reading)
 
 ---
 
@@ -60,23 +86,23 @@ Normalization removes redundancy by splitting data into related tables.
 1NF (First Normal Form):
   - Each column holds one value (no arrays, no comma-separated lists)
   - Each row is unique (has a primary key)
-  ✗ BAD:  orders(id, customer_name, customer_email, items="pen,paper,stapler")
-  ✓ GOOD: orders(id, customer_id), order_items(order_id, product_id)
+  Bad:  orders(id, customer_name, customer_email, items="pen,paper,stapler")
+  Good: orders(id, customer_id), order_items(order_id, product_id)
 
 2NF (Second Normal Form):
   - 1NF + every non-key column depends on the WHOLE primary key
   - Eliminates partial dependencies (applies to composite keys)
-  ✗ BAD:  order_items(order_id, product_id, product_name)
+  Bad:  order_items(order_id, product_id, product_name)
            product_name depends on product_id alone, not the composite key
-  ✓ GOOD: order_items(order_id, product_id, quantity)
+  Good: order_items(order_id, product_id, quantity)
            products(product_id, product_name)
 
 3NF (Third Normal Form):
   - 2NF + no non-key column depends on another non-key column
   - Eliminates transitive dependencies
-  ✗ BAD:  orders(order_id, customer_id, customer_city, customer_country)
+  Bad:  orders(order_id, customer_id, customer_city, customer_country)
            customer_country depends on customer_city, not order_id
-  ✓ GOOD: orders(order_id, customer_id)
+  Good: orders(order_id, customer_id)
            customers(customer_id, city_id)
            cities(city_id, city_name, country)
 ```
@@ -477,7 +503,7 @@ WHERE customer_id = 'C001';
 | **3** | Previous only | Medium | Low | "Before/after" comparison |
 | **6** (hybrid) | Full + current column | Highest | High | Need both full history and easy current-state access |
 
-### dbt snapshots (SCD Type 2)
+### Tool example: dbt snapshots (SCD Type 2)
 
 ```sql
 -- snapshots/snap_customers.sql
@@ -562,19 +588,19 @@ Example:
 
 ---
 
-## Modeling for dbt
+## Layered Transformation Architecture
+
+Most teams organize warehouse transformations in layers, regardless of the tool that runs them (plain SQL scripts, stored procedures, dbt, SQLMesh, Dataform, or Spark SQL):
 
 ```
-Layered architecture (the dbt way):
-
-  Sources        Raw tables from source systems
+  Sources        Raw tables loaded from source systems
       ↓
   Staging        stg_<source>__<entity>
-                 One-to-one with source, light cleaning only:
+                 One-to-one with a source table, light cleaning only:
                  rename columns, cast types, add metadata
       ↓
   Intermediate   int_<entity>__<transformation>
-                 Business logic, joins, transformations
+                 Business logic, joins, derivations
                  Not exposed to end users
       ↓
   Marts          fct_<entity> or dim_<entity>
@@ -582,44 +608,48 @@ Layered architecture (the dbt way):
 ```
 
 ```sql
--- stg_stripe__orders.sql — staging: rename + cast only
+-- staging.stg_billing__orders — rename + cast only
+CREATE OR REPLACE VIEW staging.stg_billing__orders AS
 SELECT
     id                          AS order_id,
     customer                    AS customer_id,
-    amount / 100.0              AS amount_usd,   -- Stripe stores cents
+    amount / 100.0              AS amount,        -- source stores minor units (cents)
     status,
-    CAST(created AS TIMESTAMP)  AS created_at,
-    {{ dbt_utils.generate_surrogate_key(['id']) }} AS order_sk
-FROM {{ source('stripe', 'charges') }}
+    CAST(created AS TIMESTAMP)  AS created_at
+FROM raw.billing_orders;
 
--- int_orders__enriched.sql — intermediate: join + derive
+-- intermediate.int_orders__enriched — join + derive
+CREATE OR REPLACE VIEW intermediate.int_orders__enriched AS
 SELECT
     o.order_id,
     o.customer_id,
-    o.amount_usd,
+    o.amount,
     o.status,
     o.created_at,
     c.region,
     c.segment,
-    ROW_NUMBER() OVER (PARTITION BY o.customer_id ORDER BY o.created_at) AS customer_order_num,
-    CASE WHEN ROW_NUMBER() OVER (PARTITION BY o.customer_id ORDER BY o.created_at) = 1
-         THEN TRUE ELSE FALSE END AS is_first_order
-FROM {{ ref('stg_stripe__orders') }} o
-JOIN {{ ref('stg_salesforce__customers') }} c ON o.customer_id = c.customer_id
+    ROW_NUMBER() OVER (PARTITION BY o.customer_id ORDER BY o.created_at) AS customer_order_num
+FROM staging.stg_billing__orders o
+JOIN staging.stg_crm__customers  c ON o.customer_id = c.customer_id;
 
--- fct_orders.sql — mart: final, clean, documented
+-- marts.fct_orders — final, documented table
+CREATE OR REPLACE TABLE marts.fct_orders AS
 SELECT
     order_id,
     customer_id,
-    amount_usd,
+    amount,
     status,
     created_at,
     region,
     segment,
     customer_order_num,
-    is_first_order
-FROM {{ ref('int_orders__enriched') }}
+    customer_order_num = 1 AS is_first_order
+FROM intermediate.int_orders__enriched;
 ```
+
+**Rules that keep layers maintainable:** staging models never join; business logic lives in intermediate models; marts are the only layer BI tools read; each model has one grain and a tested primary key.
+
+> **Tooling:** transformation frameworks automate the dependency order between these layers. In dbt, for example, `FROM staging.stg_billing__orders` becomes `FROM {{ ref('stg_billing__orders') }}`, and raw tables are referenced with `{{ source('billing', 'orders') }}` — see the [dbt guide](../02-processing/dbt-reference.md).
 
 ---
 
@@ -645,7 +675,8 @@ FROM {{ ref('int_orders__enriched') }}
             e.g., "fct_order_items: one row per order line item"
 
 5. Ignoring NULL foreign keys
-   Problem: LEFT JOIN silently drops rows, metrics are wrong
+   Problem: INNER JOINs silently drop those fact rows (and LEFT JOINs show
+            NULL attributes) — metrics disagree depending on how you join
    Fix:     Use a "Unknown" or "Not Applicable" dimension row (key = -1)
             so NULLs never appear in fact table FK columns
 
@@ -662,6 +693,75 @@ FROM {{ ref('int_orders__enriched') }}
    Problem: slow joins, no pre-computed date attributes
    Fix:     Use INTEGER date keys (YYYYMMDD) and a pre-populated dim_date
 ```
+
+---
+
+## Cheat Sheet
+
+| Decision | Rule of thumb |
+|----------|---------------|
+| First step for any fact table | Write down the grain: "one row per ___" |
+| Measures (amounts, counts, durations) | Fact tables |
+| Descriptive attributes (names, categories, regions) | Dimension tables |
+| Join keys in facts | Surrogate keys, not source-system natural keys |
+| Missing dimension value | Point to an "Unknown" row (key `-1`), never leave the FK `NULL` |
+| Attribute change, history irrelevant or a typo fix | SCD Type 1 (overwrite) |
+| Attribute change that affects historical reporting | SCD Type 2 (new row + `valid_from` / `valid_to` / `is_current`) |
+| Only need "previous value" | SCD Type 3 (extra column) |
+| Attribute that must never change | SCD Type 0 |
+| Dashboards / BI audience | Star schema, or One Big Table in Gold |
+| Many sources, heavy audit requirements | Data Vault in the raw/integration layer, star schema on top |
+| Transformation layering | `stg_` (1:1 with source) → `int_` (logic) → `fct_` / `dim_` (marts) |
+
+**Fact table types:** transaction (one row per event) · periodic snapshot (one row per entity per period) · accumulating snapshot (one row per process, updated at milestones) · factless (events with no measures, e.g. attendance)
+
+**Dimension patterns:** conformed (shared across facts) · role-playing (`dim_date` as order date *and* ship date) · junk (bundle of low-cardinality flags) · degenerate (an ID kept in the fact with no dimension, e.g. `order_number`) · outrigger (dimension that references another dimension)
+
+**Point-in-time join for SCD Type 2:**
+```sql
+JOIN dim_customer c
+  ON  f.customer_id = c.customer_id
+  AND f.order_ts >= c.valid_from
+  AND f.order_ts <  COALESCE(c.valid_to, '9999-12-31')
+```
+
+---
+
+## Interview Questions
+
+**Q: What is the grain of a fact table and why is it the first thing to decide?**
+A: The grain is what one row represents — "one row per order line item" or "one row per customer per day". Every other design decision follows from it: which dimensions apply, which measures are additive, and how the table can be aggregated safely. Mixing grains in one table (order-level shipping cost next to item-level price) leads to double-counting when someone sums a column.
+
+**Q: What is the difference between a star schema and a snowflake schema?**
+A: Both have fact tables at the center. In a star schema, dimensions are denormalized — `dim_product` includes category and department names directly. In a snowflake schema, dimensions are normalized into sub-dimensions (`dim_product → dim_category → dim_department`). Star schemas mean fewer joins and simpler SQL, which is why they're preferred in modern columnar warehouses where storage is cheap; snowflake schemas save a little storage and reduce update anomalies.
+
+**Q: Explain SCD Type 1, 2, and 3. When would you use Type 2?**
+A: Type 1 overwrites the value and keeps no history. Type 2 closes the current row (sets `valid_to`, `is_current = false`) and inserts a new row with a new surrogate key, preserving full history. Type 3 keeps the previous value in an extra column, giving one level of history. Use Type 2 whenever historical reports must reflect the attribute *as it was* — a customer's region or a salesperson's territory at the time of a sale — so last year's numbers don't change when someone moves.
+
+**Q: Why use surrogate keys instead of natural keys?**
+A: Natural keys come from source systems and can change, be reused, collide across sources, or be missing. Surrogate keys (integer sequences or hashes generated in the warehouse) are stable and unique, make SCD Type 2 possible (one natural key, many versions, each with its own surrogate key), and let you handle unknown members with a reserved key such as `-1`.
+
+**Q: What are additive, semi-additive, and non-additive measures?**
+A: Additive measures can be summed across every dimension (revenue, quantity). Semi-additive measures can be summed across some dimensions but not time — an account balance can be summed across accounts on one day, but not across days (take the last value or an average instead). Non-additive measures can't be summed at all — ratios and percentages; store the numerator and denominator and compute the ratio after aggregating.
+
+**Q: Star schema, One Big Table, or Data Vault — how do you choose?**
+A: A star schema is the default for analytics: flexible, understandable, and efficient. One Big Table (everything pre-joined) is great for a specific dashboard, ML features, or non-SQL users, but it duplicates data and makes history and reuse harder — it's usually built *from* a star schema in the Gold layer. Data Vault suits large enterprises with many source systems and strict audit needs, as an integration layer that absorbs change, with star schemas built on top for consumption.
+
+**Q: How would you model orders and their line items?**
+A: Two fact tables at different grains: `fct_orders` (one row per order — order total, shipping, discount) and `fct_order_items` (one row per line — product, quantity, price). Both share conformed dimensions (customer, date) and the item fact also joins to `dim_product`. Order-level amounts are not repeated on item rows; if they must be, allocate them proportionally so they sum correctly.
+
+**Q: How do you handle a fact that arrives before its dimension record (a late-arriving dimension)?**
+A: Don't drop the fact. Either point it at an "Unknown" member (key `-1`) and re-key it once the dimension arrives, or insert an "inferred" placeholder dimension row with just the natural key and update its attributes when the real record lands. Which to choose depends on how often it happens and whether reprocessing facts is cheap.
+
+---
+
+## Further Reading
+
+- *The Data Warehouse Toolkit, 3rd Edition* — Ralph Kimball & Margy Ross (Wiley). The reference for dimensional modeling.
+- [Kimball Group dimensional modeling techniques](https://www.kimballgroup.com/data-warehouse-business-intelligence-resources/kimball-techniques/dimensional-modeling-techniques/) — free one-page summaries of every pattern above
+- [dbt: How we structure our dbt projects](https://docs.getdbt.com/best-practices/how-we-structure/1-guide-overview)
+- *Building a Scalable Data Warehouse with Data Vault 2.0* — Dan Linstedt & Michael Olschimke (Morgan Kaufmann)
+- *Agile Data Warehouse Design* — Lawrence Corr. Practical techniques for gathering modeling requirements with stakeholders.
 
 ---
 

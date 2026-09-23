@@ -7,13 +7,11 @@
 
 ---
 
-## Plain English: What Is Spark and Why Not Just Use Pandas?
+## Overview
 
-**The problem Spark solves:**
+**Challenge:** Single-machine tools such as pandas work well until the data no longer fits in memory. A typical server has tens of gigabytes of RAM, while production datasets can reach many terabytes.
 
-Pandas is great — until your data doesn't fit in RAM. A single machine has maybe 64GB of memory. A production dataset might be 10TB. Pandas would crash.
-
-Spark runs across a **cluster of machines**. It splits your data into chunks (partitions), distributes them across many machines, processes them in parallel, and combines the results. What would take 8 hours on a single machine takes 10 minutes on a 50-node cluster.
+**Solution:** Spark runs on a **cluster of machines**. It splits data into partitions, distributes them across the cluster, processes them in parallel, and combines the results, so work that would take hours on one machine completes in minutes.
 
 ```
 Pandas:                          PySpark:
@@ -29,7 +27,7 @@ Rule of thumb:
 ```
 
 **Key concept — lazy evaluation:**
-When you write `df.filter(...).groupBy(...).agg(...)`, Spark doesn't actually run anything. It builds a plan. Only when you call an *action* (`.show()`, `.count()`, `.write()`) does Spark execute. This lets Spark optimize the whole chain before touching a single byte of data.
+A chain such as `df.filter(...).groupBy(...).agg(...)` does not execute immediately; Spark builds a logical plan. Execution starts only when an *action* (`.show()`, `.count()`, `.write()`) is called, which allows Spark to optimize the entire chain before reading any data.
 
 ---
 
@@ -62,6 +60,12 @@ When you write `df.filter(...).groupBy(...).agg(...)`, Spark doesn't actually ru
 - [Query Optimization & EXPLAIN](#query-optimization--explain)
 - [Structured Streaming](#structured-streaming)
 - [Common Patterns](#common-patterns)
+
+**Reference**
+- [Common Pitfalls](#common-pitfalls)
+- [Cheat Sheet](#cheat-sheet)
+- [Interview Questions](#interview-questions)
+- [Further Reading](#further-reading)
 
 ---
 
@@ -770,15 +774,15 @@ df.write.partitionBy("order_date").parquet("s3://output/orders/")
 By default, every action recomputes the DataFrame from scratch. Cache when you use a DataFrame more than once in the same job.
 
 ```python
-# Cache in memory (default)
+# Cache (DataFrame default level: MEMORY_AND_DISK)
 df.cache()
 df.persist()   # same as cache()
 
 # Choose storage level explicitly
 from pyspark import StorageLevel
 
-df.persist(StorageLevel.MEMORY_ONLY)         # default — spills to disk if no room
-df.persist(StorageLevel.MEMORY_AND_DISK)     # spills to disk when memory full
+df.persist(StorageLevel.MEMORY_ONLY)         # partitions that don't fit are recomputed, not spilled
+df.persist(StorageLevel.MEMORY_AND_DISK)     # spills to disk when memory is full (the default)
 df.persist(StorageLevel.DISK_ONLY)           # always on disk
 
 # Cache is lazy — must trigger an action to actually cache
@@ -881,15 +885,17 @@ event_schema = StructType([
 
 events = stream_df.select(
     F.from_json(F.col("value").cast("string"), event_schema).alias("data")
-).select("data.*")
+).select("data.*") \
+ .withColumn("event_time", F.col("ts").cast("timestamp"))   # epoch seconds → timestamp
 
 # Windowed aggregation on event time
 from pyspark.sql.functions import window
 
+# Watermark must be on a timestamp column: accept events up to 10 min late
 agg = events \
-    .withWatermark("ts", "10 minutes") \    # allow 10 min late data
+    .withWatermark("event_time", "10 minutes") \
     .groupBy(
-        window(F.col("ts").cast("timestamp"), "5 minutes"),  # 5-min tumbling window
+        window(F.col("event_time"), "5 minutes"),   # 5-min tumbling window
         F.col("event_type")
     ) \
     .count()
@@ -1002,6 +1008,58 @@ exploded = df.withColumn("item", F.explode("line_items")) \
 
 ---
 
+## Common Pitfalls
+
+| Pitfall | Symptom | Fix |
+|---------|---------|-----|
+| `collect()` / `toPandas()` on a big DataFrame | Driver OOM, job dies at the very end | Aggregate or `limit()` first; write large results to storage |
+| `inferSchema=true` in production | Slow (reads the data twice); types change when the data changes | Pass an explicit `StructType` schema |
+| Python UDFs for things built-ins can do | 10–100× slower; the optimizer can't see inside | `pyspark.sql.functions` first, then Pandas UDFs, and Python UDFs only as a last resort |
+| `count()` / `show()` after every step to "debug" | Every action re-runs the whole lineage from source | Inspect with `explain()`; cache only what's reused; check small samples |
+| Caching everything | Executors run out of memory, other jobs slow down | Cache only DataFrames used more than once, then `unpersist()` |
+| Joining on keys with a few huge values | One task runs for hours while the rest finish in seconds | Enable AQE skew join handling; salt hot keys; broadcast the small side |
+| Leaving `spark.sql.shuffle.partitions` at 200 for every job | Thousands of tiny tasks on small data, or giant tasks on huge data | Enable AQE (coalesces partitions automatically) or tune per job |
+| `mode("overwrite")` on a partitioned path without dynamic overwrite | One day's rerun wipes the entire table | `partitionOverwriteMode=dynamic`, or Delta/Iceberg `replaceWhere` / `MERGE` |
+| `repartition(1)` / `coalesce(1)` to "get one file" on big data | All data squeezed through one task — slow or OOM | Accept multiple files; compact with the table format if needed |
+| Chaining hundreds of `withColumn` calls in a loop | Huge query plans, slow planning, even stack overflows | One `select()` with a list of expressions, or `withColumns({...})` |
+| Filtering on a derived expression (`F.to_date("ts") == ...`) | No partition pruning or predicate pushdown | Filter on the raw partition column, or add a proper partition column |
+| Changing a streaming query's logic but reusing its checkpoint | Query fails to start or gives wrong state | New checkpoint location for incompatible changes; plan state migrations |
+| Streaming aggregation without a watermark | State grows forever until the job OOMs | `withWatermark()` on an event-time column |
+
+---
+
+## Cheat Sheet
+
+| Task | Code |
+|------|------|
+| Session | `SparkSession.builder.appName("x").getOrCreate()` |
+| Read with schema | `spark.read.schema(schema).option("header", True).csv(path)` |
+| Read Parquet / Delta / table | `spark.read.parquet(p)` · `spark.read.format("delta").load(p)` · `spark.table("db.t")` |
+| Select / rename / cast | `df.select("a", F.col("b").alias("c"), F.col("d").cast("date"))` |
+| Add several columns | `df.withColumns({"x": expr1, "y": expr2})` |
+| Filter | `df.filter((F.col("a") > 1) & F.col("b").isNotNull())` |
+| Conditional | `F.when(cond, v).when(cond2, v2).otherwise(v3)` |
+| Group + aggregate | `df.groupBy("k").agg(F.sum("amt").alias("total"), F.countDistinct("id"))` |
+| Join | `a.join(b, on="id", how="left")` · `a.join(F.broadcast(b), "id")` |
+| Anti / semi join | `how="left_anti"` (in a, not in b) · `how="left_semi"` (in a, and in b) |
+| Window | `w = Window.partitionBy("k").orderBy(F.desc("ts"))` → `F.row_number().over(w)` |
+| Dedupe exact rows / by key | `df.dropDuplicates()` · `df.dropDuplicates(["id"])` (arbitrary row — use a window for "latest") |
+| Nulls | `df.fillna({"a": 0})` · `F.coalesce("a", "b")` |
+| JSON string → columns | `F.from_json("value", schema)` → `.select("data.*")` |
+| Explode array | `F.explode("items")` (`explode_outer` keeps empty/NULL arrays) |
+| Dates | `F.to_date`, `F.date_trunc("month", c)`, `F.datediff`, `F.date_add` |
+| SQL | `df.createOrReplaceTempView("t"); spark.sql("SELECT ...")` |
+| Partitions | `df.rdd.getNumPartitions()` · `repartition(n, "k")` · `coalesce(n)` |
+| Plan | `df.explain(mode="formatted")` |
+| Write partitioned | `df.write.mode("overwrite").partitionBy("dt").parquet(p)` |
+| Write a table | `df.writeTo("db.t").append()` · `.overwritePartitions()` |
+
+**Performance checklist:** AQE on (default in 3.2+) → filter and select early → broadcast small tables → avoid Python UDFs → check the Spark UI for skew (one long task) and spill → right-size files on write (128 MB–1 GB)
+
+**Narrow vs wide:** `select`, `filter`, `withColumn`, `union` are narrow (no shuffle) · `groupBy`, `join`, `distinct`, `orderBy`, `repartition` are wide (shuffle = a stage boundary)
+
+---
+
 ## Interview Questions
 
 **Q: What is the difference between a transformation and an action in Spark?**
@@ -1021,6 +1079,32 @@ A: Skew is when one partition has far more data than others — one executor doe
 
 **Q: What is the difference between Spark Structured Streaming and batch processing?**
 A: Batch processing reads a bounded dataset, processes it, and writes results — has a clear start and end. Structured Streaming reads from an unbounded source (Kafka, S3 files) continuously, processing micro-batches or trigger-based intervals, with a checkpoint to track progress. The API is the same (DataFrame operations) but streaming adds constraints: only certain aggregations work, joins have limitations, and you must manage state and watermarks.
+
+**Q: What is Adaptive Query Execution (AQE)?**
+A: AQE re-optimizes the query plan *during* execution using runtime statistics from completed shuffle stages. It does three main things: coalesces many small shuffle partitions into fewer, well-sized ones; switches a sort-merge join to a broadcast join when one side turns out to be small; and splits skewed partitions in joins so one hot key doesn't stall the job. It's on by default since Spark 3.2 and removes most of the need to hand-tune `spark.sql.shuffle.partitions`.
+
+**Q: What are narrow and wide transformations, and what is a stage?**
+A: In a narrow transformation, each output partition depends on one input partition (`filter`, `select`), so no data moves between executors. In a wide transformation, output partitions depend on many input partitions (`groupBy`, `join`), which requires a shuffle over the network. Spark splits a job into stages at shuffle boundaries; tasks within a stage run in parallel, one per partition. Fewer shuffles usually means a faster job.
+
+**Q: Walk through what happens when you call `df.write.parquet(...)`.**
+A: The write is an action, so the driver takes the logical plan built by earlier transformations, lets Catalyst optimize it (predicate pushdown, column pruning, join selection), and generates a physical plan. The DAG scheduler splits it into stages at shuffle boundaries, and the task scheduler sends one task per partition to executors. Each executor reads its input splits, processes them, and writes its own part files; the output committer then finalizes the files (which is why object stores benefit from table formats with atomic commits).
+
+**Q: How would you debug a Spark job that is slow?**
+A: Open the Spark UI. In the Stages tab, look for a stage where one task takes far longer than the median (skew), large "spill (disk)" values (partitions too big for memory), or huge shuffle read/write sizes (an unnecessary shuffle or a missing broadcast). In the SQL tab, check the plan for full scans with no pushed filters, sort-merge joins where a broadcast would do, and Python UDF nodes. Then fix the cause: filter earlier, broadcast, salt skewed keys, replace UDFs, or right-size partitions.
+
+**Q: How does Structured Streaming achieve exactly-once results?**
+A: Replayable sources (Kafka offsets, file lists) plus checkpointing plus idempotent or transactional sinks. Before processing each micro-batch, Spark records the offsets it will read in the checkpoint's write-ahead log; state is also checkpointed. After a failure, it replays exactly those offsets. Sinks like Delta commit each batch atomically, tagged with the batch ID, so a replayed batch isn't written twice. With a non-idempotent sink (e.g. a plain JDBC insert), you only get at-least-once.
+
+---
+
+## Further Reading
+
+- [PySpark API reference](https://spark.apache.org/docs/latest/api/python/reference/index.html)
+- [Spark SQL performance tuning](https://spark.apache.org/docs/latest/sql-performance-tuning.html) — AQE, broadcast, partitioning
+- [Structured Streaming programming guide](https://spark.apache.org/docs/latest/structured-streaming-programming-guide.html)
+- [Spark UI guide](https://spark.apache.org/docs/latest/web-ui.html) — reading stages, tasks, and SQL plans
+- *Learning Spark, 2nd Edition* — Jules Damji et al. (O'Reilly; free PDF from Databricks)
+- *Spark: The Definitive Guide* — Bill Chambers & Matei Zaharia (O'Reilly)
 
 ---
 

@@ -7,11 +7,11 @@
 
 ---
 
-## Plain English: What Is RAG and Why Do You Need It?
+## Overview
 
-**The problem:** LLMs are trained on public data up to a cutoff date. They know nothing about your internal systems, your data dictionary, your runbooks, or anything that happened after their training.
+**Challenge:** LLMs are trained on public data up to a cutoff date. They have no knowledge of internal systems, data dictionaries, runbooks, or events after training.
 
-**RAG is the fix:** Before asking the LLM a question, you look up relevant documents from your own knowledge base and paste them into the prompt. The LLM then answers based on *your* data, not just its training.
+**Solution:** Retrieval-augmented generation retrieves relevant documents from an organization's own knowledge base and includes them in the prompt, so the model answers from that content rather than from its training data alone.
 
 ```
 Without RAG:
@@ -57,6 +57,12 @@ The LLM is now a search interface over your own documents.
 - [Re-ranking](#re-ranking)
 - [Advanced RAG Patterns](#advanced-rag-patterns)
 - [Evaluating RAG Quality](#evaluating-rag-quality)
+
+**Reference**
+- [Common Pitfalls](#common-pitfalls)
+- [Cheat Sheet](#cheat-sheet)
+- [Interview Questions](#interview-questions)
+- [Further Reading](#further-reading)
 
 ---
 
@@ -173,7 +179,7 @@ Be concise. Cite the context number like [1] when you use it.""",
             "content": f"Context:\n{context}\n\nQuestion: {question}"
         }]
     )
-    return response.content[0].text
+    return next(b.text for b in response.content if b.type == "text")
 
 # ── 5. Ask ────────────────────────────────────────────────────────────────────
 print(answer("What columns does the orders table have?"))
@@ -330,7 +336,7 @@ def compress_chunk(query: str, chunk: str) -> str:
             "content": f"Extract only the parts of this text relevant to the question.\n\nQuestion: {query}\n\nText: {chunk}\n\nRelevant excerpt:"
         }]
     )
-    return response.content[0].text
+    return next(b.text for b in response.content if b.type == "text")
 
 # Parent-child chunking
 # Index small chunks (for precision), but retrieve larger parent chunks (for context)
@@ -375,7 +381,7 @@ Rules:
     )
 
     return {
-        "answer":  response.content[0].text,
+        "answer":  next(b.text for b in response.content if b.type == "text"),
         "sources": [c.get("doc_id") for c in context_chunks],
         "tokens":  response.usage.input_tokens + response.usage.output_tokens,
     }
@@ -433,7 +439,7 @@ def rerank(query: str, chunks: list[dict], top_n: int = 3) -> list[dict]:
     """Re-rank retrieved chunks using a cross-encoder."""
     pairs   = [(query, chunk["text"]) for chunk in chunks]
     scores  = reranker.predict(pairs)
-    ranked  = sorted(zip(scores, chunks), reverse=True)
+    ranked  = sorted(zip(scores, chunks), key=lambda pair: pair[0], reverse=True)  # key avoids comparing dicts on ties
     return [chunk for _, chunk in ranked[:top_n]]
 
 # Full pipeline: retrieve more (k=10), re-rank, use top 3
@@ -458,7 +464,7 @@ def hyde_retrieve(query: str, k: int = 5) -> list[dict]:
         max_tokens=200,
         messages=[{"role": "user", "content": f"Write a short paragraph that would be a good answer to: {query}"}]
     )
-    hypothetical = response.content[0].text
+    hypothetical = next(b.text for b in response.content if b.type == "text")
 
     # Step 2: embed the hypothetical answer (not the query)
     hyp_vec = embed([hypothetical])[0]
@@ -483,7 +489,7 @@ def multi_query_retrieve(question: str, k: int = 5) -> list[dict]:
         }]
     )
     import json
-    queries = json.loads(response.content[0].text)
+    queries = json.loads(next(b.text for b in response.content if b.type == "text"))
     queries.append(question)  # include original
 
     # Retrieve for each query, deduplicate
@@ -526,7 +532,7 @@ CONTEXT:
         system=system,
         messages=messages
     )
-    return response.content[0].text
+    return next(b.text for b in response.content if b.type == "text")
 ```
 
 ---
@@ -555,7 +561,7 @@ Score (just the number):"""
         }]
     )
     try:
-        return float(response.content[0].text.strip())
+        return float(next(b.text for b in response.content if b.type == "text").strip())
     except ValueError:
         return 0.0
 
@@ -571,7 +577,7 @@ def eval_relevance(question: str, answer: str) -> float:
         }]
     )
     try:
-        return float(response.content[0].text.strip())
+        return float(next(b.text for b in response.content if b.type == "text").strip())
     except ValueError:
         return 0.0
 
@@ -585,7 +591,7 @@ def eval_retrieval(question: str, chunks: list[str]) -> float:
             temperature=0,
             messages=[{"role": "user", "content": f"Is this chunk relevant to '{question}'? Answer YES or NO.\n\n{chunk}"}]
         )
-        if "YES" in resp.content[0].text.upper():
+        if "YES" in next(b.text for b in resp.content if b.type == "text").upper():
             relevant += 1
     return relevant / len(chunks)
 
@@ -608,6 +614,56 @@ for tc in test_cases:
 
 ---
 
+## Common Pitfalls
+
+| Pitfall | Symptom | Fix |
+|---------|---------|-----|
+| Judging RAG by reading a few answers | Looks great in the demo, wrong in production | A labelled question set; measure retrieval (recall@k) and generation (faithfulness) separately |
+| Blaming the LLM for retrieval failures | Prompt tweaks don't help | Check first whether the right chunk was retrieved at all — most RAG failures are retrieval failures |
+| Naive fixed-size chunking | Answers split across chunks; tables and code broken apart | Structure-aware chunking; include the title/section path in each chunk; tune size on your eval set |
+| Vector search only | Misses exact terms: error codes, table names, IDs | Hybrid search (BM25 + vectors), then re-rank |
+| Stuffing 20+ chunks "to be safe" | Higher cost, slower, and the model misses the key passage | Retrieve more, re-rank, and pass the top few |
+| No metadata filters | Answers mix environments, old doc versions, or other tenants' data | Filter by source, date, version, and access permissions at query time |
+| Ignoring document permissions | Users see content they're not allowed to see | Enforce ACLs in retrieval (filter on the user's groups) — never rely on the prompt |
+| Stale index | Answers cite outdated runbooks | Incremental re-indexing on change; store `updated_at`; delete vectors when documents are deleted |
+| No "I don't know" path | Confident hallucinations when nothing relevant is retrieved | Relevance threshold plus an explicit instruction to say the answer isn't in the context |
+| Treating retrieved text as trusted | Prompt injection from documents | Delimit context as data; don't let retrieved text trigger tools without checks |
+
+---
+
+## Cheat Sheet
+
+**The RAG pipeline in one view**
+
+```
+INDEX (offline)                                QUERY (online)
+load docs → clean → chunk → embed → upsert     question → (rewrite) → embed → retrieve top-k
+         + metadata (source, date, ACL)                  → filter → re-rank → top-n chunks
+                                                         → prompt with citations → answer → log + eval
+```
+
+| Knob | Typical starting point | Tune by |
+|------|------------------------|---------|
+| Chunk size / overlap | 300–800 tokens / 10–20% | Recall@k on your eval questions |
+| Retrieve k | 20–50 candidates | Recall of the right chunk |
+| Final n after re-ranking | 3–8 chunks | Answer quality vs. tokens |
+| Hybrid weighting | Reciprocal Rank Fusion (RRF) | Queries with exact terms vs. paraphrases |
+| Similarity threshold | Calibrate on labelled data | Rate of "no answer" vs. hallucination |
+
+**Metrics**
+
+| Stage | Metric | Question it answers |
+|-------|--------|---------------------|
+| Retrieval | Recall@k / hit rate | Is the right chunk in the top k? |
+| Retrieval | MRR / nDCG | How high is it ranked? |
+| Generation | Faithfulness / groundedness | Is every claim supported by the context? |
+| Generation | Answer relevance | Does it actually answer the question? |
+| End to end | Correctness vs. a reference answer | Is it right? |
+
+**When RAG is the wrong tool:** questions about aggregates ("total revenue last month") → text-to-SQL against the warehouse · stable style or format changes → prompting or fine-tuning · a small corpus that fits in context → put it all in the prompt and cache it
+
+---
+
 ## Interview Questions
 
 **Q: What is RAG and what problem does it solve?**
@@ -624,6 +680,16 @@ A: After initial retrieval (fast, ANN search), re-ranking uses a more expensive 
 
 **Q: How do you evaluate a RAG pipeline?**
 A: Four metrics: (1) Faithfulness — does the answer only use information from retrieved context? (2) Answer relevance — does it actually answer the question? (3) Context precision — how many retrieved chunks were actually useful? (4) Context recall — did retrieval find all the relevant information? Use LLM-as-judge for automated evaluation, and maintain a golden test set of question-answer pairs to catch regressions when you change chunking, retrieval, or the generation prompt.
+
+---
+
+## Further Reading
+
+- [Anthropic: Contextual Retrieval](https://www.anthropic.com/news/contextual-retrieval) — adding context to chunks before embedding, with benchmark results
+- [RAGAS documentation](https://docs.ragas.io/) — RAG evaluation metrics
+- [LlamaIndex](https://docs.llamaindex.ai/) and [LangChain retrieval docs](https://python.langchain.com/docs/concepts/retrieval/)
+- *Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks* — Lewis et al., 2020 (the original RAG paper)
+- [Embeddings](embeddings.md) · [Vector Databases](vector-databases.md) · [Eval & Evals](eval-and-evals.md)
 
 ---
 

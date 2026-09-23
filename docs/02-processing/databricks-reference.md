@@ -7,6 +7,28 @@
 
 ---
 
+## Overview
+
+**Challenge:** Organizations historically ran two separate systems: a low-cost *data lake* (files in object storage) for raw data and machine learning, and a *data warehouse* for curated SQL reporting. Data was copied between them, the copies diverged, and governance had to be implemented twice.
+
+**Solution — the lakehouse:** a single copy of the data is kept in open file formats in your own cloud storage, with a transaction layer (Delta Lake) that adds warehouse capabilities — ACID transactions, schema enforcement, `MERGE`, and time travel. Databricks builds on this with managed Spark compute, SQL warehouses for BI, notebooks, job orchestration, ML tooling, and a unified governance layer (Unity Catalog).
+
+```
+           Notebooks · Jobs · SQL editor · BI tools · ML
+                              │
+                 Compute (Spark / Photon / serverless)
+                              │
+        Unity Catalog — permissions, lineage, audit, discovery
+                              │
+     Delta Lake tables  =  Parquet files  +  _delta_log (transactions)
+                              │
+                 Your cloud storage (S3 / ADLS / GCS)
+```
+
+**Summary:** Databricks combines managed Spark with a warehouse layer over your own files. Engineers who know PySpark and SQL mainly need to learn its organization (catalogs, jobs, compute) and the Delta-specific operations (`MERGE`, `OPTIMIZE`, `VACUUM`, time travel).
+
+---
+
 ## Table of Contents
 
 **Basics**
@@ -29,6 +51,12 @@
 - [Open Table Formats — Delta vs Iceberg vs Hudi](#open-table-formats)
 - [Performance Optimization](#performance-optimization)
 - [Databricks in Production](#databricks-in-production)
+
+**Reference**
+- [Common Pitfalls](#common-pitfalls)
+- [Cheat Sheet](#cheat-sheet)
+- [Interview Questions](#interview-questions)
+- [Further Reading](#further-reading)
 
 ---
 
@@ -309,8 +337,8 @@ dt.update(
 df_with_new_col.write \
     .format("delta") \
     .mode("append") \
-    .option("mergeSchema", "true") \     # adds new column to table schema
-    .save("/mnt/datalake/bronze/orders")
+    .option("mergeSchema", "true") \
+    .save("/mnt/datalake/bronze/orders")   # mergeSchema adds new columns to the table schema
 
 # ── OPTIMIZE — compact small files ────────────────
 spark.sql("OPTIMIZE delta.`/mnt/datalake/bronze/orders`")
@@ -359,8 +387,8 @@ df_stream.writeStream \
     .format("delta") \
     .outputMode("append") \
     .option("checkpointLocation", checkpoint_path) \
-    .trigger(availableNow=True) \  # process all pending files, then stop
-    .start(target_path)
+    .trigger(availableNow=True) \
+    .start(target_path)          # availableNow: process all pending files, then stop
 
 # Trigger options:
 # .trigger(availableNow=True)          — batch: process all new files, stop
@@ -404,10 +432,12 @@ SELECT DATE(created_at) AS order_date, SUM(amount) AS revenue
 FROM silver.orders
 GROUP BY 1;
 
--- Dynamic views for row-level security
+-- Dynamic views for row-level security — map users to regions in a table
 CREATE VIEW finance_orders AS
-SELECT * FROM orders
-WHERE region = current_user_region();   -- filter by logged-in user's region
+SELECT o.*
+FROM   orders o
+WHERE  o.region IN (SELECT region FROM security.user_regions
+                    WHERE  user_email = current_user());
 ```
 
 ---
@@ -469,6 +499,8 @@ Workflows orchestrate multi-task pipelines — notebooks, Python scripts, dbt co
 ---
 
 ## Delta Live Tables (DLT)
+
+> **Naming note:** in 2025 Databricks renamed DLT to **Lakeflow Declarative Pipelines** (and Workflows to **Lakeflow Jobs**). The open-source equivalent is Spark Declarative Pipelines (`from pyspark import pipelines as dp`). The `import dlt` API below still works.
 
 DLT is a declarative pipeline framework. You define **what** the data should look like (using `@dlt.table` decorators), and Databricks manages the execution order, retries, and data quality.
 
@@ -562,24 +594,25 @@ CREATE TABLE analytics.bronze.orders (
     created_at  TIMESTAMP
 )
 USING DELTA
-PARTITIONED BY (DATE(created_at));
+CLUSTER BY (created_at);   -- liquid clustering; Delta can't partition by an expression like DATE(created_at)
 
 -- Create an external table (data stays in your storage)
 CREATE TABLE analytics.bronze.events
 USING DELTA
 LOCATION 's3://my-bucket/bronze/events/';
 
--- Grant permissions
-GRANT USAGE   ON CATALOG analytics                TO GROUP `data-engineers`;
-GRANT SELECT  ON SCHEMA analytics.gold            TO GROUP `analysts`;
-GRANT MODIFY  ON TABLE analytics.bronze.orders    TO GROUP `data-engineers`;
-GRANT ALL PRIVILEGES ON SCHEMA analytics.bronze   TO GROUP `data-engineers`;
+-- Grant permissions (USE CATALOG + USE SCHEMA are needed before any table access)
+GRANT USE CATALOG ON CATALOG analytics            TO `data-engineers`;
+GRANT USE CATALOG ON CATALOG analytics            TO `analysts`;
+GRANT USE SCHEMA, SELECT ON SCHEMA analytics.gold TO `analysts`;
+GRANT MODIFY ON TABLE analytics.bronze.orders     TO `data-engineers`;
+GRANT ALL PRIVILEGES ON SCHEMA analytics.bronze   TO `data-engineers`;
 
 -- Column-level masking (dynamic data masking)
 CREATE FUNCTION mask_email(email STRING)
 RETURNS STRING
 RETURN CASE
-    WHEN is_member('data-engineers') THEN email
+    WHEN is_account_group_member('data-engineers') THEN email
     ELSE CONCAT(LEFT(email, 2), '***@***.com')
 END;
 
@@ -589,7 +622,7 @@ ALTER TABLE analytics.silver.customers
 -- Row-level security
 CREATE FUNCTION region_filter(region STRING)
 RETURNS BOOLEAN
-RETURN is_member(CONCAT('region-', region));
+RETURN is_account_group_member(CONCAT('region-', region));
 
 ALTER TABLE analytics.silver.orders
     ADD ROW FILTER region_filter ON (region);
@@ -733,6 +766,87 @@ def log_pipeline_run(pipeline_name, records_processed, duration_sec, status):
     df.write.format("delta").mode("append") \
       .saveAsTable("analytics.ops.pipeline_metrics")
 ```
+
+---
+
+## Common Pitfalls
+
+| Pitfall | Symptom | Fix |
+|---------|---------|-----|
+| Running scheduled jobs on all-purpose clusters | Bills 2–3× higher than necessary | Job clusters or serverless jobs for production; all-purpose clusters only for development |
+| No auto-termination on interactive clusters | Idle clusters running all weekend | `auto_termination_minutes` (e.g. 30) plus cluster policies that enforce it |
+| Still using DBFS mounts with access keys | Credentials shared by everyone on the workspace; no fine-grained access | Unity Catalog external locations and storage credentials; volumes for files |
+| Over-partitioning Delta tables | Many small files, slow queries | Don't partition tables under ~1 TB; use liquid clustering (`CLUSTER BY`) instead |
+| Never running `OPTIMIZE` / `VACUUM` | Small files pile up; storage grows forever | Predictive optimization, or scheduled `OPTIMIZE` + `VACUUM` |
+| `VACUUM ... RETAIN 0 HOURS` | Time travel gone; concurrent readers and streams fail | Keep the default 7 days unless you understand the consequences |
+| `MERGE` with duplicate keys in the source | `Cannot perform Merge as multiple source rows matched...` | Deduplicate the source on the merge key first |
+| Business logic spread across `%run` notebook chains | Hard to test, review, and reuse | Python modules/wheels in Git folders, imported into thin notebooks; unit tests in CI |
+| Hardcoded paths, workspace URLs, and secrets | Can't promote from dev to prod | Asset Bundles with per-target variables; `dbutils.secrets` |
+| One giant cluster for every workload | Streaming, ETL, and ad hoc queries fight for resources | Separate jobs and compute per workload; SQL warehouses for BI |
+| `inferSchema` / schema inference in Bronze without evolution rules | Jobs break or silently add junk columns | Auto Loader with `schemaLocation`, schema hints, and a chosen `schemaEvolutionMode` |
+
+---
+
+## Cheat Sheet
+
+| Task | Code |
+|------|------|
+| Read a UC table | `spark.table("catalog.schema.table")` |
+| Write a managed table | `df.write.mode("overwrite").saveAsTable("cat.sch.t")` |
+| Upsert | `MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE SET * WHEN NOT MATCHED THEN INSERT *` |
+| Overwrite one slice | `df.write.mode("overwrite").option("replaceWhere", "dt = '2024-03-15'").saveAsTable("t")` |
+| Table history / time travel | `DESCRIBE HISTORY t` · `SELECT * FROM t VERSION AS OF 5` |
+| Undo a bad write | `RESTORE TABLE t TO VERSION AS OF 5` |
+| Compact / cluster | `OPTIMIZE t` · `ALTER TABLE t CLUSTER BY (col)` |
+| Clean old files | `VACUUM t` (default retention 7 days) |
+| Table details | `DESCRIBE DETAIL t` (location, size, number of files) |
+| Incremental file ingest | `spark.readStream.format("cloudFiles").option("cloudFiles.format", "json")...` |
+| Run as batch | `.trigger(availableNow=True)` |
+| Secrets | `dbutils.secrets.get(scope="s", key="k")` |
+| Notebook parameters | `dbutils.widgets.text("date", "")` → `dbutils.widgets.get("date")` |
+| Files in a volume | `/Volumes/catalog/schema/volume/path/file.csv` |
+| Deploy with bundles | `databricks bundle validate` → `deploy -t prod` → `run job_name` |
+| Grant read access | `GRANT USE CATALOG ON CATALOG c TO g; GRANT USE SCHEMA, SELECT ON SCHEMA c.s TO g` |
+
+**Compute choice:** development → all-purpose cluster (auto-terminate) · scheduled ETL → job cluster / serverless jobs · BI and SQL → SQL warehouse (serverless) · small Python work → single-node cluster
+
+**Delta table layout:** under ~1 TB → no partitions · large tables → liquid clustering on common filter columns · Z-ORDER only on older runtimes
+
+---
+
+## Interview Questions
+
+**Q: What is Delta Lake and how does it provide ACID transactions on object storage?**
+A: Delta Lake is an open table format made of Parquet data files plus a transaction log (`_delta_log/`) of JSON commits and periodic Parquet checkpoints. Each write adds new data files, then atomically writes the next numbered log entry that lists added and removed files. Readers reconstruct the current table state from the log, so they only ever see committed versions. Concurrent writers use optimistic concurrency: if two try to write the same log version, one wins and the other re-checks for conflicts and retries or fails.
+
+**Q: What is Auto Loader and why use it instead of a plain file read?**
+A: Auto Loader (`cloudFiles`) is a Structured Streaming source that incrementally discovers new files in cloud storage and processes each exactly once, tracking progress in a checkpoint. It scales to millions of files using directory listing or cloud file notifications, infers and evolves schemas (with a rescued-data column for unexpected fields), and can run continuously or as a batch with `availableNow`. It replaces hand-written "which files have I already loaded?" logic.
+
+**Q: What does `OPTIMIZE` do, and what is Z-ordering vs liquid clustering?**
+A: `OPTIMIZE` compacts many small files into fewer large ones. Z-ordering additionally sorts data within files by multiple columns so file-level min/max statistics let queries skip more files — but it has to be re-run and rewrites data each time. Liquid clustering is the newer replacement: you declare clustering columns with `CLUSTER BY`, can change them without rewriting the table, and clustering is applied incrementally. It also replaces most uses of partitioning.
+
+**Q: What is Unity Catalog?**
+A: Databricks' governance layer: a single metastore per region shared across workspaces, with a three-level namespace (`catalog.schema.table`). It centralizes permissions (grants on catalogs, schemas, tables, volumes, functions, models), row filters and column masks, automatic lineage, audit logs, and managed access to cloud storage through storage credentials and external locations — replacing per-workspace Hive metastores and mounts.
+
+**Q: What's the difference between a managed and an external table?**
+A: For a managed table, Unity Catalog controls both the metadata and the storage location; dropping the table deletes the data (after a retention period), and features like predictive optimization work automatically. For an external table, you specify a `LOCATION` you manage; dropping the table removes only the metadata. Use managed by default, and external when other tools must own or directly access the files.
+
+**Q: How would you deploy Databricks pipelines across dev and prod?**
+A: Keep code in Git and define jobs, pipelines, and their compute in a Databricks Asset Bundle (`databricks.yml`) with a target per environment. CI runs unit tests and `databricks bundle validate`, then deploys to a dev or staging workspace for integration tests; merging to `main` deploys to production, running as a service principal. Environment-specific values (catalog names, paths) come from bundle variables, so the same code runs everywhere.
+
+**Q: Delta Live Tables / Lakeflow Declarative Pipelines vs regular jobs — when would you use each?**
+A: Declarative pipelines suit a medallion flow of tables: you declare each table as a query, and the framework works out dependencies, incremental processing, retries, and data quality expectations. Plain jobs (notebooks or Python scripts orchestrated by Lakeflow Jobs) give full control, which suits complex custom logic, external API calls, or non-table outputs. Many teams use pipelines for Bronze → Silver → Gold and jobs for everything around them.
+
+---
+
+## Further Reading
+
+- [Databricks documentation](https://docs.databricks.com/)
+- [Delta Lake documentation](https://docs.delta.io/) — the open-source format, usable outside Databricks
+- [Unity Catalog best practices](https://docs.databricks.com/en/data-governance/unity-catalog/best-practices.html)
+- [Liquid clustering](https://docs.databricks.com/en/delta/clustering.html)
+- [Databricks Asset Bundles](https://docs.databricks.com/en/dev-tools/bundles/index.html)
+- *Delta Lake: The Definitive Guide* — Denny Lee, Tristen Wentling, Scott Haines & Prashanth Babu (O'Reilly)
 
 ---
 

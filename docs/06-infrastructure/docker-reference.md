@@ -7,6 +7,23 @@
 
 ---
 
+## Overview
+
+**Challenge:** A pipeline depends on a specific Python version, pinned libraries, a Java runtime for Spark, and database drivers. Differences between developer machines, CI, and production servers cause failures that are hard to reproduce.
+
+**Solution:** Docker packages the complete environment, described in a `Dockerfile`, into an immutable **image** that runs as a **container** anywhere — a laptop, CI, Kubernetes, or a managed batch service. The same image runs identically in every environment.
+
+```
+Dockerfile  ──build──→  Image (versioned, immutable)  ──push──→  Registry (ECR / GHCR / Docker Hub)
+  recipe                  e.g. orders-etl:1.4.2                          │
+                                                                 pull + run anywhere
+                                                          laptop · CI · Kubernetes · Airflow
+```
+
+**Typical uses in data engineering:** running an orchestrator, database, message broker, or Spark locally with Docker Compose; packaging pipeline jobs so the orchestrator can run them in isolation; and building reproducible CI environments for transformation and Spark tests.
+
+---
+
 ## Table of Contents
 
 **Basics**
@@ -27,6 +44,12 @@
 - [Docker for DE Pipelines](#docker-for-de-pipelines)
 - [Running Airflow in Docker](#running-airflow-in-docker)
 - [Best Practices](#best-practices)
+
+**Reference**
+- [Common Pitfalls](#common-pitfalls)
+- [Cheat Sheet](#cheat-sheet)
+- [Interview Questions](#interview-questions)
+- [Further Reading](#further-reading)
 
 ---
 
@@ -287,9 +310,7 @@ ENV LOG_LEVEL=INFO
 Docker Compose defines multi-container applications in a single YAML file.
 
 ```yaml
-# docker-compose.yml
-version: "3.9"
-
+# docker-compose.yml  (Compose V2 — the old top-level `version:` key is obsolete and ignored)
 services:
   postgres:
     image: postgres:15
@@ -388,7 +409,8 @@ CMD ["python", "src/main.py"]
 ### Packaging a PySpark job
 
 ```dockerfile
-FROM bitnami/spark:3.5
+# Official Apache Spark image (Python variant)
+FROM apache/spark:3.5.3-python3
 
 USER root
 WORKDIR /opt/spark/jobs
@@ -400,9 +422,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy job files
 COPY jobs/ .
 
-USER 1001
+USER spark
 
-ENTRYPOINT ["spark-submit"]
+ENTRYPOINT ["/opt/spark/bin/spark-submit"]
 CMD ["--master", "local[*]", "main.py"]
 ```
 
@@ -418,7 +440,9 @@ docker run --rm \
     --date 2024-03-15
 ```
 
-### Packaging a dbt project
+### Packaging a SQL transformation project
+
+The same pattern applies to any CLI-driven transformation tool; this example uses dbt with its official adapter image.
 
 ```dockerfile
 FROM ghcr.io/dbt-labs/dbt-snowflake:1.7.0
@@ -444,10 +468,12 @@ docker run --rm \
 
 ## Running Airflow in Docker
 
-```yaml
-# docker-compose.airflow.yml — simplified Airflow stack
-version: "3.9"
+> For real use, start from the official Compose file, which tracks each release (Airflow 3 adds `api-server`, `dag-processor`, and `triggerer` services):
+> `curl -LfO 'https://airflow.apache.org/docs/apache-airflow/stable/docker-compose.yaml'`
+> The simplified Airflow 2.x stack below shows how the pieces fit together.
 
+```yaml
+# docker-compose.airflow.yml — simplified Airflow 2.x stack
 x-airflow-common: &airflow-common
   image: apache/airflow:2.9.0
   environment:
@@ -456,7 +482,7 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__FERNET_KEY: ""
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
     AIRFLOW__CORE__LOAD_EXAMPLES: "false"
-    _PIP_ADDITIONAL_REQUIREMENTS: "apache-airflow-providers-snowflake apache-airflow-providers-amazon"
+    _PIP_ADDITIONAL_REQUIREMENTS: "apache-airflow-providers-postgres apache-airflow-providers-amazon"
   volumes:
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs
@@ -492,7 +518,7 @@ services:
   airflow-init:
     <<: *airflow-common
     command: >
-      bash -c "airflow db init &&
+      bash -c "airflow db migrate &&
                airflow users create --username admin --password admin
                --firstname Admin --lastname User --role Admin
                --email admin@example.com"
@@ -511,24 +537,24 @@ docker compose -f docker-compose.airflow.yml up -d
 ## Best Practices
 
 ```dockerfile
-# ✅ Pin base image versions
+# Recommended: Pin base image versions
 FROM python:3.11.7-slim-bookworm   # good
 FROM python:latest                  # bad
 
-# ✅ Use slim or alpine variants
+# Recommended: Use slim or alpine variants
 FROM python:3.11-slim   # ~50 MB
 FROM python:3.11        # ~350 MB
 FROM python:3.11-alpine # ~20 MB (but may have glibc compatibility issues)
 
-# ✅ One process per container
+# Recommended: One process per container
 # Don't run both a web server and a background worker in one container
 # Use separate services in docker-compose instead
 
-# ✅ Non-root user
+# Recommended: Non-root user
 RUN useradd -m -u 1000 appuser
 USER appuser
 
-# ✅ .dockerignore — exclude files from build context
+# Recommended: .dockerignore — exclude files from build context
 ```
 
 ```text
@@ -550,7 +576,7 @@ tests
 ```
 
 ```dockerfile
-# ✅ Minimize layers — combine related RUN commands
+# Recommended: Minimize layers — combine related RUN commands
 # Bad
 RUN apt-get update
 RUN apt-get install -y curl wget
@@ -562,15 +588,106 @@ RUN apt-get update \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# ✅ COPY only what's needed — not COPY . . blindly
+# Recommended: COPY only what's needed — not COPY . . blindly
 COPY requirements.txt .
 COPY src/ ./src/
 COPY config/ ./config/
 
-# ✅ Use healthchecks
+# Recommended: Use healthchecks
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 ```
+
+---
+
+## Common Pitfalls
+
+| Pitfall | Symptom | Fix |
+|---------|---------|-----|
+| `FROM python:latest` or unpinned `pip install` | An image rebuilt next month behaves differently or breaks | Pin the base image tag (ideally the digest) and dependency versions |
+| `COPY . .` before installing dependencies | Every code change reinstalls all packages — slow builds | Copy the requirements/lock file, install, *then* copy the code |
+| No `.dockerignore` | Huge build context; `.git`, `.env`, and data files end up inside the image | A `.dockerignore` excluding VCS, secrets, venvs, data, and caches |
+| Secrets in `ENV`, `ARG`, or copied files | Anyone who can pull the image can read the secrets (`docker history` shows them) | Inject at runtime (env vars from a secrets manager, mounted files); `RUN --mount=type=secret` for build-time secrets |
+| Running as root | A container escape or bug has root privileges | Create and switch to a non-root `USER` |
+| Writing important data to the container filesystem | Data disappears when the container is removed | Volumes for local state; object storage/databases for pipeline outputs |
+| `localhost` inside a container to reach another container | "Connection refused" | Use the Compose service name (`postgres:5432`); `host.docker.internal` to reach the host |
+| `depends_on` without a healthcheck | App starts before the database is ready and crashes | `depends_on: {db: {condition: service_healthy}}` plus a `healthcheck` |
+| Building on Apple Silicon, running on x86 servers | `exec format error` in production | `docker buildx build --platform linux/amd64` (or multi-arch builds) |
+| Images several GB in size | Slow pulls, slow pod startup, bigger attack surface | Slim base images, multi-stage builds, clean package caches in the same `RUN` |
+| Docker Desktop's VM running out of memory with Spark/Airflow | Containers get OOM-killed with no clear error | Raise the Docker memory limit; set container memory limits explicitly |
+
+---
+
+## Cheat Sheet
+
+| Task | Command |
+|------|---------|
+| Build and tag | `docker build -t app:1.0 .` |
+| Build for another CPU architecture | `docker buildx build --platform linux/amd64 -t app:1.0 .` |
+| Run once and clean up | `docker run --rm app:1.0 --date 2024-03-15` |
+| Interactive shell in a new container | `docker run --rm -it --entrypoint bash app:1.0` |
+| Shell in a running container | `docker exec -it <name> bash` |
+| Env vars / env file | `-e KEY=val` · `--env-file .env` |
+| Mount the current directory | `-v "$(pwd)":/app` |
+| Publish a port | `-p 8080:8080` (host:container) |
+| Logs | `docker logs -f --tail 100 <name>` |
+| Resource usage | `docker stats` |
+| Inspect image layers | `docker history app:1.0` |
+| Disk usage / cleanup | `docker system df` · `docker system prune` |
+| Compose: start / rebuild / stop | `docker compose up -d` · `up --build` · `down` (`-v` also deletes volumes) |
+| Compose: logs / shell | `docker compose logs -f svc` · `docker compose exec svc bash` |
+| Push to ECR | `aws ecr get-login-password \| docker login --username AWS --password-stdin <acct>.dkr.ecr.<region>.amazonaws.com` → `docker push` |
+
+**Dockerfile template for a Python job**
+
+```dockerfile
+FROM python:3.12-slim
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY src/ ./src/
+RUN useradd -m -u 1000 app
+USER app
+ENTRYPOINT ["python", "-m", "src.pipeline"]
+CMD ["--help"]
+```
+
+**Image vs container:** image = the class · container = an instance · volume = its persistent disk · network = how containers find each other by name
+
+---
+
+## Interview Questions
+
+**Q: What is the difference between an image and a container?**
+A: An image is an immutable, layered filesystem plus metadata (the default command, environment, and exposed ports) — the packaged application. A container is a running instance of an image with its own writable layer, process namespace, and network. You can run many containers from one image; when a container is removed, its writable layer (and any data written there) goes with it.
+
+**Q: How does Docker layer caching work and how do you take advantage of it?**
+A: Each Dockerfile instruction produces a layer, cached by the instruction and its inputs (for `COPY`, the file contents). On rebuild, Docker reuses cached layers until the first changed step, then rebuilds everything after it. So order instructions from least to most frequently changing: base image, system packages, dependency manifest + install, then application code. That way a code change only rebuilds the last layer.
+
+**Q: How is a container different from a virtual machine?**
+A: A VM virtualizes hardware and runs a full guest OS on a hypervisor — strong isolation but heavy (GBs, minutes to boot). Containers share the host's kernel and isolate processes with namespaces and cgroups — lightweight (MBs, starts in seconds) with weaker isolation. That's why containers are the standard unit for packaging pipeline jobs and services.
+
+**Q: What are multi-stage builds and why use them?**
+A: A Dockerfile with several `FROM` stages, where later stages copy only the artifacts they need from earlier ones. You compile or install dependencies in a full "builder" image with compilers and headers, then copy the results into a slim runtime image. The final image is smaller, faster to pull, and has fewer vulnerabilities because build tools aren't shipped.
+
+**Q: How do you handle secrets with Docker?**
+A: Never bake them into the image — anything in `ENV`, `ARG`, or a copied file stays in the layers. Inject them at runtime: environment variables populated by the orchestrator from a secrets manager, or files mounted from Kubernetes secrets or Docker secrets. For secrets needed during the build (a private package index, for example), use BuildKit's `RUN --mount=type=secret`, which isn't persisted in any layer.
+
+**Q: How would you use Docker in a data pipeline?**
+A: Package each job (a Spark job, SQL transformation project, or Python extractor) as a versioned image built in CI and pushed to a registry. The orchestrator runs it with a specific tag — Airflow's KubernetesPodOperator or DockerOperator, ECS/Batch, or Kubernetes Jobs — passing parameters like the run date as arguments and credentials from a secrets manager. Every run is reproducible, dependencies don't conflict between jobs, and rollbacks are just "run the previous tag".
+
+---
+
+## Further Reading
+
+- [Docker documentation](https://docs.docker.com/)
+- [Dockerfile best practices](https://docs.docker.com/build/building/best-practices/)
+- [Docker Compose file reference](https://docs.docker.com/reference/compose-file/)
+- [Running Airflow in Docker](https://airflow.apache.org/docs/apache-airflow/stable/howto/docker-compose/index.html)
+- [Hadolint](https://github.com/hadolint/hadolint) — Dockerfile linter
+- [Dive](https://github.com/wagoodman/dive) — explore image layers and find wasted space
+- [Trivy](https://trivy.dev/) — scan images for vulnerabilities in CI
 
 ---
 

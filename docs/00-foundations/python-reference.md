@@ -7,6 +7,23 @@
 
 ---
 
+## Overview
+
+**Challenge:** SQL is well suited to transforming data inside a database, but pipelines also need to call REST APIs, read files from object storage, retry on transient failures, and react to schema changes. That integration work requires a general-purpose language.
+
+**Solution:** Python is the common language of the data engineering ecosystem — orchestration code, Spark jobs, streaming consumers, data quality frameworks, and cloud SDKs all use it. SQL typically *transforms* data; Python *moves and orchestrates* it.
+
+```
+Typical DE Python script:
+
+  requests.get(api)  →  validate schema  →  pandas / pyarrow  →  write Parquet to S3  →  log + alert
+     extract              guard               transform             load                observe
+```
+
+**Priorities for data engineering:** Production code must be *idempotent* (safe to rerun), *observable* (logs what it did), *memory-aware* (streams large files instead of loading them whole), and *configurable* (no hardcoded credentials or dates).
+
+---
+
 ## Table of Contents
 
 **Basics**
@@ -32,6 +49,12 @@
 - [Pandas Essentials](#pandas-essentials)
 - [Working with APIs](#working-with-apis)
 - [DE Patterns](#de-patterns)
+
+**Reference**
+- [Common Pitfalls](#common-pitfalls)
+- [Cheat Sheet](#cheat-sheet)
+- [Interview Questions](#interview-questions)
+- [Further Reading](#further-reading)
 
 ---
 
@@ -390,6 +413,8 @@ finally:
 raise ValueError("salary must be positive")
 
 # Re-raise the current exception
+try:
+    process(record)
 except Exception as e:
     logger.error("Failed: %s", e)
     raise   # re-raise without losing original traceback
@@ -964,23 +989,35 @@ def fetch_all(base_url, params, page_size=100):
 import os
 from dataclasses import dataclass
 
-@dataclass
+@dataclass(frozen=True)
 class Config:
-    db_host:    str = os.environ["DB_HOST"]
-    db_port:    int = int(os.environ.get("DB_PORT", "5432"))
-    db_name:    str = os.environ["DB_NAME"]
-    db_pass:    str = os.environ["DB_PASSWORD"]
-    s3_bucket:  str = os.environ["S3_BUCKET"]
+    db_host:    str
+    db_port:    int
+    db_name:    str
+    db_pass:    str
+    s3_bucket:  str
 
-config = Config()
+    @classmethod
+    def from_env(cls) -> "Config":
+        # Read env vars when called, not at import time — so importing the
+        # module never crashes and tests can build a Config directly.
+        return cls(
+            db_host   = os.environ["DB_HOST"],
+            db_port   = int(os.environ.get("DB_PORT", "5432")),
+            db_name   = os.environ["DB_NAME"],
+            db_pass   = os.environ["DB_PASSWORD"],
+            s3_bucket = os.environ["S3_BUCKET"],
+        )
+
+config = Config.from_env()
 ```
 
 ### Idempotent pipeline task
 
 ```python
-def run_daily_load(execution_date: date) -> None:
+def run_daily_load(logical_date: date) -> None:
     """Load orders for a specific date. Safe to rerun."""
-    date_str = execution_date.strftime("%Y-%m-%d")
+    date_str = logical_date.strftime("%Y-%m-%d")
 
     conn.execute("DELETE FROM orders WHERE order_date = %s", (date_str,))
 
@@ -1050,6 +1087,83 @@ def incremental_load(conn, source_conn, table: str) -> None:
         save_watermark(conn, table, max(r["updated_at"] for r in rows))
         logger.info("Loaded %d new rows into %s", len(rows), table)
 ```
+
+---
+
+## Common Pitfalls
+
+| Pitfall | Symptom | Fix |
+|---------|---------|-----|
+| Mutable default argument `def f(rows=[])` | Rows leak between calls; list keeps growing | Default to `None`, then `rows = rows or []` inside |
+| Reading env vars at import time (module-level or dataclass defaults) | Importing the module crashes when a var is missing; tests can't override config | Read config inside a function / `from_env()` classmethod |
+| Bare `except:` or `except Exception: pass` | Failures swallowed; pipeline "succeeds" with no data | Catch specific exceptions; log and re-raise anything you can't handle |
+| `pd.read_csv` on a file bigger than RAM | `MemoryError` or the container gets OOM-killed | `chunksize=`, read Parquet with column selection, or use DuckDB/Polars/Spark |
+| Letting pandas infer dtypes | IDs with leading zeros lose them; mixed columns become `object`; ints become floats when NULLs appear | Pass `dtype=` explicitly; use nullable types (`Int64`, `string`) |
+| `df.apply(lambda ...)` row by row | 100× slower than it needs to be | Vectorized ops (`df["a"] * df["b"]`, `.str`, `.dt`, `np.where`) |
+| Naive datetimes | Off-by-hours bugs around DST and across regions | Store and compute in UTC with tz-aware datetimes; convert only for display |
+| `requests.get(url)` with no timeout | Job hangs forever on a stuck connection | Always pass `timeout=`; use a `Session` with `Retry` |
+| `print()` instead of logging | No timestamps or levels; nothing reaches the log aggregator | `logging` with a module logger; structured (JSON) logs in production |
+| Unpinned dependencies | A new library release breaks prod overnight | Pin versions (`requirements.txt` / lock file); upgrade deliberately |
+
+---
+
+## Cheat Sheet
+
+| Task | Code |
+|------|------|
+| Env var with default | `os.environ.get("DB_PORT", "5432")` |
+| Required env var | `os.environ["DB_HOST"]` (raises `KeyError` if missing) |
+| Today / yesterday (UTC) | `datetime.now(timezone.utc).date()` · `... - timedelta(days=1)` |
+| Parse / format dates | `datetime.strptime(s, "%Y-%m-%d")` · `d.strftime("%Y-%m-%d")` · `d.isoformat()` |
+| Read JSON / write NDJSON | `json.load(f)` · `f.write(json.dumps(r) + "\n")` |
+| Stream a big file | `for line in open(path):` · `pd.read_csv(path, chunksize=100_000)` |
+| Batch an iterable | `itertools.batched(rows, 1000)` (3.12+) |
+| Read Parquet columns only | `pd.read_parquet(p, columns=["id", "amount"])` |
+| Dedupe keep latest | `df.sort_values("updated_at").drop_duplicates("id", keep="last")` |
+| Group + multiple aggs | `df.groupby("k").agg(n=("id", "count"), total=("amt", "sum"))` |
+| HTTP with retries | `Session()` + `HTTPAdapter(max_retries=Retry(...))`, always `timeout=` |
+| Logger | `logger = logging.getLogger(__name__)` |
+| Timer | `start = time.perf_counter(); ...; time.perf_counter() - start` |
+| Dataclass record | `@dataclass(frozen=True) class Order: id: int; amount: float` |
+| Virtual env | `python -m venv .venv && source .venv/bin/activate` |
+
+**Choose the right container:** list (ordered, duplicates) · tuple (fixed record) · set (fast membership, unique) · dict (lookup by key) · generator (one pass, constant memory)
+
+---
+
+## Interview Questions
+
+**Q: What is a generator and why is it useful in data pipelines?**
+A: A generator is a function that uses `yield` to produce values one at a time, pausing between them, instead of building a whole list in memory. For pipelines this means you can stream a 50 GB file or a paginated API through transform and load steps using constant memory. The trade-off is that a generator can only be consumed once and doesn't support indexing or `len()`.
+
+**Q: What's the difference between a list and a tuple? When would you use a set?**
+A: Lists are mutable and tuples are immutable; tuples are hashable (if their contents are), so they can be dict keys or set members — useful for composite keys like `(customer_id, date)`. Sets store unique values with O(1) average membership tests, so `if id in seen_ids` against a set of a million IDs is fast, whereas the same check against a list is a linear scan.
+
+**Q: Explain the mutable default argument problem.**
+A: Default values are evaluated once, when the function is defined — not on each call. So `def add(row, rows=[])` shares one list across every call that doesn't pass `rows`, and data leaks between calls. The fix is `rows=None` and `if rows is None: rows = []` inside the function. The same thing happens with dataclass defaults and module-level code: anything computed at definition time runs once, at import.
+
+**Q: How do you process a file that is larger than memory in Python?**
+A: Stream it. For text, iterate line by line; for CSV, `pd.read_csv(..., chunksize=N)` and process each chunk; for Parquet, read only the columns you need or iterate row groups with `pyarrow`. If you need joins or aggregations over the whole dataset, reach for DuckDB or Polars (which spill to disk and are multi-threaded) or Spark if it's truly large.
+
+**Q: What makes a Python pipeline task idempotent?**
+A: Rerunning it for the same input produces the same end state. Practically: parameterize on the logical date instead of `datetime.now()`, write with overwrite-partition or `DELETE`+`INSERT` / `MERGE` instead of plain appends, write to a temp location and atomically rename or swap, and make side effects (emails, API calls) conditional on not having already happened.
+
+**Q: What is the GIL and does it matter for data engineering?**
+A: The Global Interpreter Lock lets only one thread execute Python bytecode at a time in CPython. It doesn't matter much for I/O-bound work (API calls, database queries) — threads release the GIL while waiting, so `ThreadPoolExecutor` speeds those up. It does limit CPU-bound pure-Python work; for that, use `multiprocessing`/`ProcessPoolExecutor`, or libraries whose heavy lifting runs in native code (NumPy, pandas, Polars, PyArrow). Free-threaded CPython builds (3.13+) are removing this limit, but most production stacks still assume the GIL.
+
+**Q: How do you handle secrets in Python pipelines?**
+A: Never in code or Git. Read them from environment variables injected at runtime, or directly from a secrets manager (AWS Secrets Manager, Vault, Airflow connections/Databricks secret scopes). Use `.env` files only locally, and keep them in `.gitignore`. Avoid logging config objects that contain secrets.
+
+---
+
+## Further Reading
+
+- [Python documentation](https://docs.python.org/3/) — especially the tutorial and the standard library reference
+- [pandas user guide](https://pandas.pydata.org/docs/user_guide/index.html)
+- *Fluent Python* — Luciano Ramalho (O'Reilly). The best "intermediate to advanced" Python book.
+- *Python for Data Analysis* — Wes McKinney (free online at [wesmckinney.com/book](https://wesmckinney.com/book/)), by the creator of pandas
+- [Polars](https://docs.pola.rs/) and [DuckDB Python API](https://duckdb.org/docs/api/python/overview) — faster options once pandas runs out of memory
+- [Real Python](https://realpython.com/) — practical tutorials on almost every topic above
 
 ---
 

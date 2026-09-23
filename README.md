@@ -43,7 +43,7 @@ The full learning paths, the "when should I use what" tables, and the cheat shee
 Copy [`docs/_template.md`](docs/_template.md). Every guide uses the same sections:
 
 1. Prerequisites / Related links at the top
-2. Plain-English intro
+2. Overview (the problem the topic solves and how, before any code)
 3. Table of contents split into Basic / Intermediate / Advanced
 4. Content sections with runnable code
 5. Common Pitfalls

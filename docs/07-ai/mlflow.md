@@ -7,6 +7,26 @@
 
 ---
 
+## Overview
+
+**Challenge:** Machine learning work produces many experiments — training runs with different parameters, data versions, and results — spread across notebooks and machines. Without tracking, it becomes impossible to say which run produced the production model, what data it used, or how to reproduce it.
+
+**Solution:** MLflow is an open-source system of record for ML and LLM work. It records every run (parameters, metrics, code version, artifacts), stores models in a standard format, maintains a *registry* of model versions with aliases such as `@champion`, and serves models as REST endpoints. Recent versions also trace LLM calls and evaluate GenAI applications.
+
+```
+train/eval runs ──log──→ Tracking server (params · metrics · artifacts · traces)
+                                   │ pick best run
+                                   ▼
+                         Model Registry: orders-forecaster  v1  v2  v3 ← @champion
+                                   │ load by alias
+                                   ▼
+                  batch scoring job · REST endpoint · Spark UDF · Databricks serving
+```
+
+**Relevance to data engineering:** data engineers typically operate the tracking server, integrate model scoring into pipelines (load `@champion`, score the latest partition), record data versions alongside models for lineage, and trigger retraining when data drifts.
+
+---
+
 ## Table of Contents
 
 **Basic**
@@ -19,13 +39,19 @@
 - [MLflow Projects](#mlflow-projects)
 - [Model Registry](#model-registry)
 - [MLflow with Scikit-learn & PySpark](#mlflow-with-scikit-learn--pyspark)
-- [MLflow with LLMs (MLflow AI Gateway)](#mlflow-with-llms-mlflow-ai-gateway)
+- [MLflow with LLMs](#mlflow-with-llms)
 
 **Advanced**
 - [Model Serving](#model-serving)
 - [Custom Python Models](#custom-python-models)
 - [MLflow in Databricks](#mlflow-in-databricks)
 - [DE Integration Patterns](#de-integration-patterns)
+
+**Reference**
+- [Common Pitfalls](#common-pitfalls)
+- [Cheat Sheet](#cheat-sheet)
+- [Interview Questions](#interview-questions)
+- [Further Reading](#further-reading)
 
 ---
 
@@ -38,7 +64,7 @@ MLflow is an open-source platform for managing the ML lifecycle:
 | **Tracking** | Log parameters, metrics, code, and artifacts per experiment run |
 | **Projects** | Package ML code for reproducible execution |
 | **Models** | Standard format for packaging models for deployment |
-| **Registry** | Versioned model store with staging/production lifecycle |
+| **Registry** | Versioned model store; aliases (e.g. `@champion`) mark which version is live |
 | **Serving** | REST endpoint for serving models |
 
 ```
@@ -47,7 +73,7 @@ Typical workflow:
   → Track each run in MLflow (params, metrics, artifacts)
   → Pick the best run
   → Register model in the Model Registry
-  → Promote to "Production"
+  → Point the "champion" alias at the new version
   → Serve via MLflow serve or integrate into pipeline
 ```
 
@@ -232,25 +258,22 @@ mlflow.register_model(
 
 # ── List versions ──────────────────────────────────────────────────────────────
 for v in client.search_model_versions("name='orders-forecaster'"):
-    print(f"Version {v.version}: stage={v.current_stage}, run={v.run_id}")
+    print(f"Version {v.version}: aliases={v.aliases}, run={v.run_id}")
 
-# ── Transition stages ──────────────────────────────────────────────────────────
-client.transition_model_version_stage(
-    name="orders-forecaster",
-    version=3,
-    stage="Staging"    # None → Staging → Production → Archived
-)
+# ── Promote with aliases ───────────────────────────────────────────────────────
+# Stages (Staging/Production) are deprecated since MLflow 2.9 — use aliases instead.
+# An alias is a movable pointer to one version; deployments load by alias.
+client.set_registered_model_alias("orders-forecaster", "challenger", version=3)
 
-client.transition_model_version_stage(
-    name="orders-forecaster",
-    version=3,
-    stage="Production",
-    archive_existing_versions=True   # archive old Production version
-)
+# After validation, point "champion" at the new version (the old one is simply un-aliased)
+client.set_registered_model_alias("orders-forecaster", "champion", version=3)
+
+# Roll back = move the alias back
+client.set_registered_model_alias("orders-forecaster", "champion", version=2)
 
 # ── Load a registered model ────────────────────────────────────────────────────
-# By stage
-model = mlflow.pyfunc.load_model("models:/orders-forecaster/Production")
+# By alias
+model = mlflow.pyfunc.load_model("models:/orders-forecaster@champion")
 
 # By version
 model = mlflow.pyfunc.load_model("models:/orders-forecaster/3")
@@ -301,7 +324,28 @@ loaded = mlflow.spark.load_model(f"runs:/{run_id}/spark-model")
 
 ---
 
-## MLflow with LLMs (MLflow AI Gateway)
+## MLflow with LLMs
+
+### Tracing LLM calls (MLflow 2.18+ / 3.x)
+
+```python
+import mlflow
+import anthropic
+
+mlflow.set_experiment("de-rag-assistant")
+mlflow.anthropic.autolog()     # every Anthropic SDK call is traced: prompt, response, tokens, latency
+
+client = anthropic.Anthropic()
+response = client.messages.create(
+    model="claude-sonnet-5",
+    max_tokens=1024,
+    messages=[{"role": "user", "content": "What does the orders DAG load?"}],
+)
+# Traces appear in the MLflow UI under the experiment's "Traces" tab.
+# Equivalent autologging exists for OpenAI (mlflow.openai), LangChain, and LlamaIndex.
+```
+
+### Logging LLM experiment results
 
 ```python
 # Log LLM experiment results
@@ -344,7 +388,7 @@ with mlflow.start_run(run_name="rag-eval-v2"):
 
 ```bash
 # Serve a registered model
-mlflow models serve -m "models:/orders-forecaster/Production" -p 5001
+mlflow models serve -m "models:/orders-forecaster@champion" -p 5001
 
 # Serve a run's model
 mlflow models serve -m "runs:/abc123/model" -p 5001
@@ -404,7 +448,7 @@ class RAGModel(mlflow.pyfunc.PythonModel):
                 max_tokens=512,
                 messages=[{"role": "user", "content": f"Context: {context_text}\n\nQ: {question}"}]
             )
-            answers.append(resp.content[0].text)
+            answers.append(next(b.text for b in resp.content if b.type == "text"))
         return pd.Series(answers)
 
 # Log and register
@@ -421,7 +465,7 @@ with mlflow.start_run():
     )
 
 # Load and use
-model = mlflow.pyfunc.load_model("models:/de-rag-assistant/Production")
+model = mlflow.pyfunc.load_model("models:/de-rag-assistant@champion")
 import pandas as pd
 results = model.predict(pd.DataFrame({"question": ["What is the orders schema?"]}))
 ```
@@ -492,7 +536,7 @@ def check_model_drift_and_retrain(**context):
     import mlflow
 
     client = mlflow.MlflowClient()
-    prod_model = client.get_latest_versions("orders-forecaster", stages=["Production"])[0]
+    prod_model = client.get_model_version_by_alias("orders-forecaster", "champion")
 
     # Compare current data distribution to training data distribution
     current_data  = get_recent_features()
@@ -504,6 +548,70 @@ def check_model_drift_and_retrain(**context):
         # Trigger Airflow DAG or Databricks job
         trigger_retraining_pipeline()
 ```
+
+---
+
+## Common Pitfalls
+
+| Pitfall | Symptom | Fix |
+|---------|---------|-----|
+| Using the default local `./mlruns` store in a team | Runs scattered across laptops; nothing shared | A tracking server with a database backend and object-storage artifacts (or managed MLflow) |
+| Loading models by stage (`models:/name/Production`) | Deprecation warnings; unclear promotion history | Aliases (`@champion`, `@challenger`) with `set_registered_model_alias` |
+| Not logging the data version | Can't reproduce or explain a model | Log the dataset path, snapshot/version (Delta/Iceberg), and row counts as params or datasets |
+| No signature or input example on logged models | Serving fails on schema mismatches | `infer_signature(X, y)` and `input_example` when logging |
+| Environment not captured | The model loads locally but not in serving | Let MLflow record `requirements.txt`/conda env; pin versions |
+| Huge artifacts logged every run | Storage costs balloon; the UI slows down | Log only what you need; lifecycle rules on the artifact store |
+| Pickled custom models relying on local code | `ModuleNotFoundError` at load time | Package code with `code_paths`, or use a models-from-code approach |
+| Scoring with whatever model is newest | Unvalidated models reach production | Promote via alias only after automated evaluation passes |
+
+---
+
+## Cheat Sheet
+
+| Task | Code |
+|------|------|
+| Point to a server | `mlflow.set_tracking_uri("http://mlflow:5000")` |
+| Choose an experiment | `mlflow.set_experiment("orders-forecasting")` |
+| Start a run | `with mlflow.start_run(run_name="xgb-v3"):` |
+| Log params / metrics | `mlflow.log_params({...})` · `mlflow.log_metric("rmse", 12.3, step=epoch)` |
+| Log files | `mlflow.log_artifact("report.html")` · `mlflow.log_dict(d, "stats.json")` |
+| Autolog a framework | `mlflow.sklearn.autolog()` · `mlflow.xgboost.autolog()` · `mlflow.spark.autolog()` |
+| Trace LLM calls | `mlflow.anthropic.autolog()` · `mlflow.openai.autolog()` · `mlflow.langchain.autolog()` |
+| Log and register a model | `mlflow.sklearn.log_model(model, name="model", registered_model_name="orders-forecaster", signature=sig)` |
+| Promote | `MlflowClient().set_registered_model_alias("orders-forecaster", "champion", version=3)` |
+| Load | `mlflow.pyfunc.load_model("models:/orders-forecaster@champion")` |
+| Score in Spark | `mlflow.pyfunc.spark_udf(spark, "models:/orders-forecaster@champion")` |
+| Serve locally | `mlflow models serve -m "models:/orders-forecaster@champion" -p 5001` |
+| Find the best run | `mlflow.search_runs(experiment_names=["x"], order_by=["metrics.rmse ASC"], max_results=1)` |
+| Start a server | `mlflow server --backend-store-uri postgresql://... --artifacts-destination s3://bucket/mlflow` |
+
+**Model URIs:** `runs:/<run_id>/model` · `models:/name/3` (version) · `models:/name@champion` (alias) · on Databricks with Unity Catalog: `models:/catalog.schema.name@champion`
+
+---
+
+## Interview Questions
+
+**Q: What are the main components of MLflow?**
+A: Tracking (logging runs with parameters, metrics, artifacts, and — in recent versions — LLM traces), Models (a standard packaging format with "flavors" such as sklearn, PyTorch, and a generic `pyfunc` interface), the Model Registry (versioned models with aliases, tags, and descriptions), and serving and deployment tools. Projects package code for reproducible runs, and recent releases add GenAI evaluation and prompt management.
+
+**Q: How do you promote a model to production with MLflow?**
+A: Register each candidate as a new version of a registered model, run automated validation (metrics above the current champion's, no regressions on key slices, signature checks), and then move an alias such as `@champion` to the new version. Consumers always load `models:/name@champion`, so promotion and rollback are just moving the alias — no code change. Record who approved it and why with tags. Older MLflow used stages (`Staging`/`Production`), which are now deprecated.
+
+**Q: How would you integrate MLflow into a data pipeline?**
+A: The training pipeline logs parameters, metrics, the data snapshot version, and the model, then registers a new version. A validation step compares it with the champion and moves the alias if it's better. A scoring pipeline (Airflow or Databricks job) loads `@champion`, scores the new partition in batch (for example with `spark_udf`), and writes predictions along with the model version for lineage. Monitoring jobs compare incoming feature distributions with training statistics and trigger retraining on drift.
+
+**Q: What is the `pyfunc` flavor and why does it matter?**
+A: `pyfunc` is MLflow's generic Python model interface: any model logged with MLflow can be loaded as a `pyfunc` and called with `.predict()` on a DataFrame, whatever library trained it. That gives serving, batch scoring, and Spark UDFs one consistent API, and custom `PythonModel` classes let you wrap anything — including a RAG chain calling an LLM — in the same format.
+
+---
+
+## Further Reading
+
+- [MLflow documentation](https://mlflow.org/docs/latest/index.html)
+- [Model Registry and aliases](https://mlflow.org/docs/latest/ml/model-registry/)
+- [MLflow Tracing for GenAI](https://mlflow.org/docs/latest/genai/tracing/)
+- [MLflow on Databricks](https://docs.databricks.com/en/mlflow/index.html)
+- *Designing Machine Learning Systems* — Chip Huyen (O'Reilly). The broader MLOps picture.
 
 ---
 
