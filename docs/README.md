@@ -30,7 +30,8 @@ Each guide follows a **Basic → Intermediate → Advanced** progression with re
 | Guide | What you'll learn |
 |-------|------------------|
 | [Apache Airflow](03-orchestration/airflow-reference.md) | DAGs, operators, XComs, sensors, TaskFlow API, dynamic DAGs, CI/CD |
-| [Apache Kafka](04-streaming/kafka-reference.md) | Topics, producers, consumers, Schema Registry, Kafka Connect, DLQ patterns |
+| [Apache Kafka](04-streaming/kafka-reference.md) | Topics, producers, consumers, Schema Registry, Kafka Connect, Kafka Streams, DLQ patterns |
+| [Data Ingestion & CDC](02-processing/ingestion-cdc.md) | API, file, and database ingestion; incremental loads; CDC with Debezium; applying changes with MERGE; build vs buy |
 
 ### Storage & Transformation
 
@@ -78,6 +79,12 @@ Each guide follows a **Basic → Intermediate → Advanced** progression with re
 | [Data Modeling](01-storage/data-modeling.md) | Star schema, SCDs, fact/dim design, snowflake schema, OBT, Data Vault, dbt layers |
 | [Glossary](99-reference/glossary.md) | Definitions for every term used across all guides — one place to look things up |
 
+### Architecture
+
+| Guide | What you'll learn |
+|-------|------------------|
+| [Data Engineering System Design](08-architecture/system-design.md) | Requirements, capacity estimation, architecture patterns, batch vs streaming, reliability, security, cost, worked designs |
+
 ---
 
 ## Learning Paths
@@ -94,6 +101,8 @@ Each guide follows a **Basic → Intermediate → Advanced** progression with re
 8. [Cloud Storage](01-storage/cloud-storage.md) — store and retrieve data at scale
 9. [Docker for DE](06-infrastructure/docker-reference.md) — package and run anything
 10. [Terraform for DE](06-infrastructure/terraform-for-de.md) — provision infra as code
+11. [Data Ingestion & CDC](02-processing/ingestion-cdc.md) — get data in reliably
+12. [Data Engineering System Design](08-architecture/system-design.md) — put it all together
 
 ### Path 2: Warehouse & transformation focus
 
@@ -115,9 +124,10 @@ Each guide follows a **Basic → Intermediate → Advanced** progression with re
 
 1. [DE Concepts](00-foundations/de-concepts.md) — streaming section
 2. [Apache Kafka](04-streaming/kafka-reference.md)
-3. [PySpark Reference](02-processing/pyspark-reference.md) — Structured Streaming section
-4. [Databricks](02-processing/databricks-reference.md) — Auto Loader and DLT sections
-5. [Data Quality](05-quality-governance/data-quality.md) — DQ in streaming pipelines
+3. [Data Ingestion & CDC](02-processing/ingestion-cdc.md) — CDC with Debezium
+4. [PySpark Reference](02-processing/pyspark-reference.md) — Structured Streaming section
+5. [Databricks](02-processing/databricks-reference.md) — Auto Loader and DLT sections
+6. [Data Quality](05-quality-governance/data-quality.md) — DQ in streaming pipelines
 
 ### Path 5: AI & LLM engineering
 

@@ -47,6 +47,7 @@ Orders → Notifications         ┌─────────────┼�
 
 **Advanced**
 - [Kafka Connect](#kafka-connect)
+- [Kafka Streams](#kafka-streams)
 - [Retention & Compaction](#retention--compaction)
 - [Performance Tuning](#performance-tuning)
 - [Kafka in DE Pipelines](#kafka-in-de-pipelines)
@@ -535,6 +536,74 @@ Kafka Connect moves data between Kafka and external systems without writing prod
 
 ---
 
+## Kafka Streams
+
+Kafka Streams is a Java/Kotlin library for building stream processing applications that read from and write to Kafka. It runs inside your own application — there is no separate processing cluster — and scales by running more instances of the application, which share the work through a consumer group.
+
+### Core abstractions
+
+| Abstraction | Meaning | Example |
+|-------------|---------|---------|
+| **KStream** | An unbounded stream of independent events | Every order event |
+| **KTable** | A changelog: the latest value per key | Current status of each order |
+| **GlobalKTable** | A KTable fully replicated to every instance | Small reference data (currencies, regions) |
+| **State store** | Local, fault-tolerant storage for aggregations and joins | Running revenue per customer |
+| **Changelog topic** | Kafka topic that backs up a state store | Restores state after a restart |
+
+### Example: revenue per customer in 5-minute windows
+
+```java
+Properties props = new Properties();
+props.put(StreamsConfig.APPLICATION_ID_CONFIG, "revenue-5m");          // also the consumer group id
+props.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "kafka:9092");
+props.put(StreamsConfig.PROCESSING_GUARANTEE_CONFIG, StreamsConfig.EXACTLY_ONCE_V2);
+
+StreamsBuilder builder = new StreamsBuilder();
+
+KStream<String, Order> orders =
+    builder.stream("order-events", Consumed.with(Serdes.String(), orderSerde));   // key = customer_id
+
+KTable<Windowed<String>, Double> revenue = orders
+    .filter((customerId, order) -> "placed".equals(order.status()))
+    .groupByKey(Grouped.with(Serdes.String(), orderSerde))
+    .windowedBy(TimeWindows.ofSizeAndGrace(Duration.ofMinutes(5), Duration.ofMinutes(1)))
+    .aggregate(
+        () -> 0.0,                                               // initial value
+        (customerId, order, total) -> total + order.amount(),    // adder
+        Materialized.with(Serdes.String(), Serdes.Double()));    // backed by a state store
+
+revenue.toStream()
+    .map((window, total) -> KeyValue.pair(window.key(), total))
+    .to("revenue-5m", Produced.with(Serdes.String(), Serdes.Double()));
+
+KafkaStreams streams = new KafkaStreams(builder.build(), props);
+Runtime.getRuntime().addShutdownHook(new Thread(streams::close));
+streams.start();
+```
+
+### Joins
+
+| Join | Use case | Requirement |
+|------|----------|-------------|
+| KStream–KStream (windowed) | Match events that occur close in time (order + payment) | Co-partitioned topics; a join window |
+| KStream–KTable | Enrich events with the latest reference data | Co-partitioned (same key, same partition count) |
+| KStream–GlobalKTable | Enrich with small reference data on any key | Fits in memory on every instance |
+| KTable–KTable | Maintain a joined, current-state view | Co-partitioned |
+
+### When to use Kafka Streams — and the alternatives
+
+| Option | Choose when |
+|--------|-------------|
+| Kafka Streams | JVM teams; Kafka in and Kafka out; want to deploy as a normal application |
+| Apache Flink | Complex event-time processing, large state, many sources and sinks, SQL interface |
+| Spark Structured Streaming | Already on Spark; micro-batch latency (seconds) is acceptable; writes to a lakehouse |
+| Python stream processors (e.g. Faust-streaming, Quix Streams, Bytewax) | Python-first teams with moderate throughput |
+| Plain consumers | Simple, stateless transformations or sinks |
+
+**Operational notes:** state stores live on local disk and are restored from changelog topics after failures (standby replicas speed this up) · repartition topics are created automatically when you re-key a stream · `exactly_once_v2` covers Kafka-to-Kafka processing end to end · scale out up to the number of input partitions
+
+---
+
 ## Retention & Compaction
 
 ### Time-based retention (default)
@@ -765,4 +834,4 @@ A: CDC with Debezium running on Kafka Connect: it reads Postgres's write-ahead l
 
 ---
 
-**Previous:** [Apache Iceberg](../01-storage/apache-iceberg.md) · **Next:** [Prompt Engineering](../07-ai/prompt-engineering.md) · **Back to:** [Index](../README.md)
+**Previous:** [Apache Iceberg](../01-storage/apache-iceberg.md) · **Next:** [Data Ingestion & CDC](../02-processing/ingestion-cdc.md) · **Back to:** [Index](../README.md)

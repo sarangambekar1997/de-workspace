@@ -592,4 +592,4 @@ A: Newer models follow instructions more literally and reason better on their ow
 
 ---
 
-**Previous:** [Kafka](../04-streaming/kafka-reference.md) · **Next:** [LLM APIs](llm-apis.md) · **Back to:** [Index](../README.md)
+**Previous:** [Data Engineering System Design](../08-architecture/system-design.md) · **Next:** [LLM APIs](llm-apis.md) · **Back to:** [Index](../README.md)

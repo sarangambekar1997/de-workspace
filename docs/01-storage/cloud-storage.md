@@ -45,6 +45,7 @@
 - [Performance & Cost Optimization](#performance--cost-optimization)
 - [Lifecycle Policies](#lifecycle-policies)
 - [Storage in Spark & Databricks](#storage-in-spark--databricks)
+- [Cross-Cloud Patterns](#cross-cloud-patterns)
 
 **Reference**
 - [Common Pitfalls](#common-pitfalls)
@@ -587,6 +588,66 @@ df.write \
     .partitionBy("order_date") \
     .parquet("s3://my-bucket/silver/orders/")
 ```
+
+---
+
+## Cross-Cloud Patterns
+
+Many organizations run data on more than one cloud — through acquisitions, customer requirements, or deliberate vendor diversification. The main concerns are cost, identity, consistency of access, and data residency.
+
+### Egress is the dominant cost
+
+Storage is cheap; moving data out of a cloud (or across regions) is not. Reading a 10 TB table from another cloud every day can cost more than storing it for a year.
+
+```
+Pattern                                   Egress per run      When to use
+──────────────────────────────────────    ────────────────    ──────────────────────────────
+Query data where it lives                 Results only        Default — keep compute next to data
+Replicate once, read locally many times   Once per change     Many readers in the other cloud
+Stream only changes (CDC / incremental)   Deltas only         Near-real-time sync between clouds
+Copy everything on every run              Full dataset        Avoid
+```
+
+### Replication options
+
+| Need | AWS | GCP | Azure | Cloud-neutral |
+|------|-----|-----|-------|---------------|
+| Same-cloud, other region | S3 Cross-Region Replication | Dual-/multi-region buckets, Turbo Replication | Object replication, GRS/GZRS | — |
+| Into this cloud from elsewhere | DataSync | Storage Transfer Service | AzCopy, Data Factory | `rclone`, table-format replication |
+| Table-level sync | — | — | — | Copy Iceberg/Delta snapshots incrementally; share via open catalogs or Delta Sharing |
+
+### One access layer across clouds
+
+```python
+import fsspec
+import pyarrow.dataset as ds
+
+# The same code reads from any provider; only the URI scheme changes
+for uri in ["s3://lake-aws/orders/", "gs://lake-gcp/orders/", "abfs://lake@account.dfs.core.windows.net/orders/"]:
+    fs, path = fsspec.core.url_to_fs(uri)
+    dataset = ds.dataset(path, filesystem=fs, format="parquet")
+    print(uri, dataset.count_rows())
+```
+
+Open table formats (Iceberg, Delta) with a shared catalog extend this to tables: engines in either cloud read the same table metadata, so there is one definition of the data rather than two diverging copies.
+
+### Identity without long-lived keys
+
+Use **workload identity federation** instead of copying access keys between clouds: a workload in cloud A presents its native identity token, and cloud B exchanges it for short-lived credentials.
+
+| From → To | Mechanism |
+|-----------|-----------|
+| AWS → GCP | GCP Workload Identity Federation trusting the AWS account/role |
+| GCP → AWS | AWS IAM OIDC identity provider trusting Google-issued tokens |
+| Azure ↔ others | Microsoft Entra ID workload identity federation / federated credentials |
+| CI (GitHub Actions) → any cloud | OIDC federation — no stored cloud secrets |
+
+### Data residency and governance
+
+- Tag datasets with their permitted regions and enforce it in replication jobs, not just in documentation
+- Keep personal data in its home region; replicate aggregated or pseudonymized derivatives instead
+- Apply the same classification, encryption, and retention rules in every cloud, ideally from one IaC codebase
+- Centralize audit logs so access can be reviewed across clouds in one place
 
 ---
 

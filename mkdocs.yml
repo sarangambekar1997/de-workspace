@@ -87,7 +87,8 @@ nav:
       - Data Modeling: 01-storage/data-modeling.md
       - Snowflake: 01-storage/snowflake-reference.md
       - Apache Iceberg: 01-storage/apache-iceberg.md
-  - Processing:
+  - Ingestion & Processing:
+      - Ingestion & CDC: 02-processing/ingestion-cdc.md
       - PySpark: 02-processing/pyspark-reference.md
       - Databricks: 02-processing/databricks-reference.md
       - dbt: 02-processing/dbt-reference.md
@@ -112,4 +113,6 @@ nav:
       - Fine-Tuning: 07-ai/fine-tuning.md
       - AI Observability: 07-ai/ai-observability.md
       - Local LLMs: 07-ai/local-llms.md
+  - Architecture:
+      - System Design: 08-architecture/system-design.md
   - Glossary: 99-reference/glossary.md

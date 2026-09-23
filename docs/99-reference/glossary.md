@@ -57,6 +57,8 @@
 
 **Data Mart** — A subset of a data warehouse focused on a specific business domain (e.g., sales mart, finance mart).
 
+**Data Mesh** — An organizational approach in which domain teams own and publish their data as products — with contracts, SLAs, and documentation — on a shared self-service platform. See [System Design](../08-architecture/system-design.md).
+
 **Data Vault** — A modeling methodology for enterprise data warehouses using Hubs (business keys), Links (relationships), and Satellites (attributes + history).
 
 **Data Warehouse** — A centralized, structured analytical data store optimized for read-heavy query workloads. Examples: Snowflake, BigQuery, Redshift.
@@ -64,6 +66,8 @@
 **DBU (Databricks Unit)** — The unit of Databricks compute cost. One DBU is one unit of processing capability per hour.
 
 **Dead Letter Queue (DLQ)** — A queue where messages that fail processing are routed for later inspection and reprocessing.
+
+**Debezium** — An open-source change data capture platform that reads database transaction logs and emits row-level change events, usually through Kafka Connect. See [Ingestion & CDC](../02-processing/ingestion-cdc.md).
 
 **Deduplication** — Removing duplicate records, either exact duplicates or near-duplicates (semantic deduplication using embeddings).
 
@@ -74,6 +78,8 @@
 **Driver (Spark)** — The JVM process that runs the `main()` function of a Spark application. Coordinates executors, builds the execution plan, and collects results.
 
 ## E
+
+**Egress** — Data transferred out of a cloud provider or region. Usually billed per GB and often the largest cost in multi-cloud or cross-region designs.
 
 **ELT (Extract, Load, Transform)** — A modern data integration pattern: data is extracted from sources, loaded raw into the destination, then transformed using the destination's compute power (e.g., dbt on Snowflake). Contrast with ETL.
 
@@ -127,13 +133,23 @@
 
 **Kafka Offset** — A sequential integer that identifies a message's position in a Kafka partition. Consumers track their own offsets to know where to resume.
 
+**Kafka Streams** — A Java library for stateful stream processing that reads from and writes to Kafka, running inside the application rather than on a separate cluster.
+
+**Kappa Architecture** — A streaming-only architecture in which all processing runs on an event log, and history is reprocessed by replaying the log. Contrast with Lambda architecture.
+
+**KTable** — In Kafka Streams, a table view of a stream holding the latest value per key (a changelog). Contrast with KStream, an unbounded stream of independent events.
+
 ## L
 
 **Lakehouse** — See Data Lakehouse.
 
+**Lambda Architecture** — An architecture that runs a batch layer (complete, accurate) and a speed layer (low-latency, approximate) in parallel and merges their results at query time.
+
 **Lazy Evaluation** — In Spark, transformations are not executed immediately — they build an execution plan (DAG) that runs only when an action is called. Enables optimization.
 
 **LLM (Large Language Model)** — A neural network trained on large amounts of text, capable of understanding and generating human language. Examples: Claude, GPT-4.
+
+**LSN (Log Sequence Number)** — A position in a database's transaction log (for example the Postgres WAL). CDC tools use it to order changes and resume from an exact point.
 
 ## M
 
@@ -184,6 +200,10 @@
 **Referential Integrity** — A database constraint ensuring that foreign key values always point to an existing primary key.
 
 **Repartition** — In Spark, redistributing data across partitions. Expensive (full shuffle), but fixes skew or right-sizes partitions before writing.
+
+**Replication Slot** — A Postgres object that tracks how far a logical replication consumer (such as a CDC connector) has read. An unused slot makes the database retain WAL indefinitely.
+
+**Reverse ETL** — Syncing modeled data from the warehouse back into operational tools such as CRM, marketing, or support systems.
 
 **Role-Playing Dimension** — When the same dimension table is used multiple times in a fact table with different semantic roles (e.g., dim_date used as order_date and ship_date).
 
@@ -242,6 +262,8 @@
 **Windowed Aggregation** — Aggregating streaming data over a sliding or tumbling time window (e.g., count of events per 5-minute window).
 
 **Window Function (SQL)** — A SQL function that performs a calculation across a set of rows related to the current row without collapsing them (unlike GROUP BY). Examples: ROW_NUMBER, RANK, LAG, LEAD, SUM OVER.
+
+**Workload Identity Federation** — Exchanging a workload's native identity token (from a cloud, CI system, or Kubernetes) for short-lived credentials in another system, avoiding long-lived access keys.
 
 ## X
 
