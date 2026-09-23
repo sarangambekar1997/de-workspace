@@ -7,6 +7,23 @@
 
 ---
 
+## Plain English: What Is Data Quality and Whose Job Is It?
+
+**The problem:** Pipelines rarely fail loudly. A source system renames a column, a partner sends half a file, a join starts duplicating rows — and the pipeline still finishes "successfully". The first person to notice is an executive asking why revenue dropped 40% overnight.
+
+**Data quality work is the fix:** you write down what "correct" means for each dataset — no NULL IDs, amounts are positive, yesterday's data arrived by 6am, row counts are in the normal range — and check it *automatically* on every run, stopping or flagging bad data before anyone consumes it.
+
+```
+Source ──→ [contract/schema checks] ──→ Bronze ──→ [validity, uniqueness] ──→ Silver ──→ [business rules, reconciliation] ──→ Gold ──→ BI
+                  │ fail                                  │ fail                                     │ fail
+                  ▼                                       ▼                                          ▼
+          reject / quarantine                    block the load, alert                     alert owner, mark stale
+```
+
+**Think of it like unit tests for data:** code tests check logic once, at deploy time. Data tests have to run on every load, because the data changes every day even when the code doesn't.
+
+---
+
 ## Table of Contents
 
 **Basics**
@@ -26,6 +43,12 @@
 - [Observability & Alerting](#observability--alerting)
 - [SLA Monitoring](#sla-monitoring)
 - [Building a DQ Framework](#building-a-dq-framework)
+
+**Reference**
+- [Common Pitfalls](#common-pitfalls)
+- [Cheat Sheet](#cheat-sheet)
+- [Interview Questions](#interview-questions)
+- [Further Reading](#further-reading)
 
 ---
 
@@ -300,69 +323,60 @@ Great Expectations is a Python library for defining, running, and documenting da
 | **Data Docs** | Auto-generated HTML documentation of all suites and results |
 | **Validation Result** | The output of running an expectation suite — pass/fail + stats |
 
-### Setup and basic usage
+### Setup and basic usage (GX 1.x)
 
 ```python
 import great_expectations as gx
 import pandas as pd
 
-# Initialize context (stores config, suites, results)
+# Context holds data sources, suites, validation definitions, and checkpoints.
+# get_context() is ephemeral (in-memory) unless a GX project directory exists;
+# use gx.get_context(mode="file") to persist config alongside your code.
 context = gx.get_context()
 
-# Create a data source
-datasource = context.sources.add_pandas("orders_source")
+# Data source → asset → batch definition (here: validate a whole DataFrame)
+data_source = context.data_sources.add_pandas(name="orders_source")
+data_asset  = data_source.add_dataframe_asset(name="orders")
+batch_def   = data_asset.add_batch_definition_whole_dataframe("daily_orders")
 
-# Create a data asset
-asset = datasource.add_csv_asset(
-    name="orders",
-    filepath_or_buffer="s3://my-bucket/orders/2024-03-15/orders.csv"
+# Expectation suite — expectations are classes in GX 1.x
+suite = context.suites.add(gx.ExpectationSuite(name="orders_suite"))
+suite.add_expectation(gx.expectations.ExpectColumnToExist(column="order_id"))
+suite.add_expectation(gx.expectations.ExpectColumnValuesToNotBeNull(column="order_id"))
+suite.add_expectation(gx.expectations.ExpectColumnValuesToBeUnique(column="order_id"))
+suite.add_expectation(gx.expectations.ExpectColumnValuesToNotBeNull(column="amount"))
+suite.add_expectation(gx.expectations.ExpectColumnValuesToBeBetween(
+    column="amount", min_value=0, max_value=100_000))
+suite.add_expectation(gx.expectations.ExpectColumnValuesToBeInSet(
+    column="status", value_set=["placed", "shipped", "delivered", "cancelled"]))
+suite.add_expectation(gx.expectations.ExpectTableRowCountToBeBetween(
+    min_value=1_000, max_value=10_000_000))
+suite.add_expectation(gx.expectations.ExpectColumnPairValuesAToBeGreaterThanB(
+    column_A="updated_at", column_B="created_at", or_equal=True))
+
+# Validation definition = which data + which suite
+validation = context.validation_definitions.add(
+    gx.ValidationDefinition(name="orders_validation", data=batch_def, suite=suite)
 )
 
-# Build expectation suite
-suite = context.add_expectation_suite("orders_suite")
-
-# Define expectations
-batch = context.get_validator(
-    batch_request=asset.build_batch_request(),
-    expectation_suite_name="orders_suite"
+# Checkpoint = validations + actions (update Data Docs, Slack, email, ...)
+checkpoint = context.checkpoints.add(
+    gx.Checkpoint(
+        name="orders_checkpoint",
+        validation_definitions=[validation],
+        actions=[gx.checkpoint.UpdateDataDocsAction(name="update_data_docs")],
+    )
 )
 
-batch.expect_column_to_exist("order_id")
-batch.expect_column_values_to_not_be_null("order_id")
-batch.expect_column_values_to_be_unique("order_id")
-batch.expect_column_values_to_not_be_null("amount")
-batch.expect_column_values_to_be_between("amount", min_value=0, max_value=100000)
-batch.expect_column_values_to_be_in_set("status",
-    value_set=["placed", "shipped", "delivered", "cancelled"])
-batch.expect_table_row_count_to_be_between(min_value=1000, max_value=10000000)
-batch.expect_column_pair_values_to_be_greater_than(
-    "updated_at", "created_at"
-)
-
-# Save expectations
-batch.save_expectation_suite()
-
-# Validate
-results = batch.validate()
-print(results["success"])    # True / False
-print(results["statistics"]) # counts of passed/failed
-
-# Run as checkpoint (with actions — save results, send alert)
-checkpoint = context.add_checkpoint(
-    name="orders_checkpoint",
-    validations=[{"batch_request": asset.build_batch_request(),
-                  "expectation_suite_name": "orders_suite"}],
-    action_list=[
-        {"name": "store_validation_result",
-         "action": {"class_name": "StoreValidationResultAction"}},
-        {"name": "update_data_docs",
-         "action": {"class_name": "UpdateDataDocsAction"}},
-    ]
-)
-result = checkpoint.run()
+# Run against today's data
+df = pd.read_parquet("s3://my-bucket/orders/2024-03-15/")
+result = checkpoint.run(batch_parameters={"dataframe": df})
+print(result.success)          # True / False
 ```
 
 ### Common expectations
+
+Shown in snake_case for brevity. In GX 1.x each is a class — `expect_column_values_to_not_be_null("order_id")` becomes `gx.expectations.ExpectColumnValuesToNotBeNull(column="order_id")`.
 
 ```python
 # Column existence
@@ -389,7 +403,7 @@ expect_column_values_to_match_regex("email", r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.
 expect_table_row_count_to_be_between(min_value=1000)
 expect_table_columns_to_match_set({"order_id", "customer_id", "amount", "status"})
 
-# Referential
+# Type list
 expect_column_values_to_be_in_type_list("created_at", ["datetime64[ns]", "Timestamp"])
 
 # Multi-column
@@ -424,26 +438,24 @@ SELECT d.order_date, d.n,
 FROM daily_counts d, stats s
 WHERE d.order_date = CURRENT_DATE;
 
--- Revenue anomaly — percentage change from same weekday 4 weeks ago
+-- Revenue anomaly — compare today with the same weekday over the past 4 weeks
 WITH today AS (
     SELECT SUM(amount) AS revenue FROM orders WHERE order_date = CURRENT_DATE
 ),
-baseline AS (
-    SELECT AVG(SUM(amount)) AS avg_revenue
+same_weekday AS (          -- one row per prior same-weekday date
+    SELECT order_date, SUM(amount) AS revenue
     FROM orders
-    WHERE order_date IN (
-        CURRENT_DATE - 7,
-        CURRENT_DATE - 14,
-        CURRENT_DATE - 21,
-        CURRENT_DATE - 28
-    )
-    GROUP BY DAYOFWEEK(order_date)
-    HAVING DAYOFWEEK(order_date) = DAYOFWEEK(CURRENT_DATE)
+    WHERE order_date IN (CURRENT_DATE - 7, CURRENT_DATE - 14,
+                         CURRENT_DATE - 21, CURRENT_DATE - 28)
+    GROUP BY order_date
+),
+baseline AS (
+    SELECT AVG(revenue) AS avg_revenue FROM same_weekday
 )
 SELECT
     today.revenue,
     baseline.avg_revenue,
-    (today.revenue - baseline.avg_revenue) / baseline.avg_revenue * 100 AS pct_change
+    (today.revenue - baseline.avg_revenue) / NULLIF(baseline.avg_revenue, 0) * 100 AS pct_change
 FROM today, baseline;
 ```
 
@@ -717,6 +729,98 @@ class DQRunner:
             names = ", ".join(r["check"] for r in failed)
             raise ValueError(f"DQ checks failed: {names}")
 ```
+
+---
+
+## Common Pitfalls
+
+| Pitfall | Symptom | Fix |
+|---------|---------|-----|
+| Only testing at the end (Gold) | Bad data already spread through every model before a test fails | Test at each layer: schema at ingestion, keys and validity in Silver, business rules in Gold |
+| Hundreds of noisy warning-level tests | Alert fatigue — real failures get ignored | Fewer, meaningful checks; separate *blocking* (error) from *informational* (warn); give each alert an owner |
+| Static thresholds (`row_count > 1000`) | False alarms on weekends and holidays; misses a slow decline | Compare with a trailing baseline (same weekday, rolling mean ± k·σ) |
+| Checking only that tests *passed* | Silent pipelines — no data arrived, so no rows failed | Freshness and volume checks: "data for yesterday exists and is in the normal range" |
+| Tests that scan the whole table every run | DQ jobs cost more than the pipeline | Test the new partition/increment; run full scans weekly |
+| Failing the whole load for a handful of bad rows | Nothing loads; downstream teams get no data at all | Quarantine bad rows to a side table, load the rest, alert on the quarantine rate |
+| No record of past results | Can't answer "when did this start?" or spot trends | Persist every check result (table, check, status, value, run time) |
+| DQ owned only by the data team | The same upstream breakage keeps coming back | Data contracts with producers: schema, semantics, SLAs, change process |
+| Reconciling on counts only | Row counts match but amounts are wrong | Reconcile sums/checksums of key measures against the source |
+
+---
+
+## Cheat Sheet
+
+**Which check catches what**
+
+| Dimension | Check | dbt | Great Expectations |
+|-----------|-------|-----|--------------------|
+| Completeness | Required columns not NULL | `not_null` | `ExpectColumnValuesToNotBeNull` |
+| Uniqueness | Primary key unique | `unique` / `dbt_utils.unique_combination_of_columns` | `ExpectColumnValuesToBeUnique` |
+| Validity | Allowed values / ranges | `accepted_values` / `dbt_utils.accepted_range` | `ExpectColumnValuesToBeInSet` / `...ToBeBetween` |
+| Integrity | Foreign keys resolve | `relationships` | `ExpectColumnValuesToBeInSet` (from a lookup) |
+| Timeliness | Data is fresh | `dbt source freshness` | `ExpectColumnMaxToBeBetween` on the timestamp |
+| Volume | Row count in normal range | `dbt_expectations.expect_table_row_count_to_be_between` | `ExpectTableRowCountToBeBetween` |
+| Consistency | Matches the source | Singular test comparing sums | Custom query expectation |
+| Schema | Expected columns and types | Model contracts (`contract: {enforced: true}`) | `ExpectTableColumnsToMatchSet` |
+
+**SQL checks to keep handy**
+
+```sql
+-- Duplicates on the grain
+SELECT id, COUNT(*) FROM t GROUP BY id HAVING COUNT(*) > 1;
+
+-- NULL rate per column
+SELECT COUNT(*) - COUNT(col) AS nulls, 1.0 * (COUNT(*) - COUNT(col)) / COUNT(*) AS null_rate FROM t;
+
+-- Orphaned foreign keys
+SELECT f.* FROM fact f LEFT JOIN dim d ON f.dim_id = d.id WHERE d.id IS NULL;
+
+-- Freshness in hours
+SELECT DATEDIFF('hour', MAX(loaded_at), CURRENT_TIMESTAMP()) FROM t;
+
+-- Today's volume vs the trailing 28-day average
+SELECT COUNT(*) / (SELECT COUNT(*) / 28.0 FROM t
+                   WHERE dt BETWEEN CURRENT_DATE - 28 AND CURRENT_DATE - 1)
+FROM t WHERE dt = CURRENT_DATE;
+```
+
+**Severity guide:** block the pipeline for broken keys, schema breaks, and missing data · warn for distribution drift and soft thresholds · quarantine individual bad rows
+
+**Tool landscape:** in-pipeline tests (dbt tests, Great Expectations, Soda, Pandera for DataFrames) · declarative pipeline expectations (Databricks, Snowflake data metric functions) · data observability platforms (Monte Carlo, Metaplane, Elementary for dbt) · contracts (Data Contract Specification, ODCS)
+
+---
+
+## Interview Questions
+
+**Q: What are the dimensions of data quality?**
+A: The usual five are completeness (is everything there, no missing rows or NULLs), accuracy/validity (values are correct and within allowed ranges), consistency (the same fact agrees across systems), timeliness (fresh enough for its use), and uniqueness (no duplicates at the declared grain). Some frameworks add integrity (relationships hold) and conformity (formats and types). The point is to turn "good data" into specific, testable checks.
+
+**Q: Where in a pipeline would you put data quality checks?**
+A: At every boundary. At ingestion: schema and contract checks, and quarantine of malformed records. In Silver: primary-key uniqueness, NULLs in required columns, accepted values, referential integrity. In Gold: business rules and reconciliation against sources. Plus freshness and volume monitoring on the outputs. Earlier checks are cheaper to fix and stop bad data before it spreads.
+
+**Q: What is a data contract?**
+A: A versioned, explicit agreement between the team that produces a dataset and the teams that consume it: schema and types, semantics of each field, quality guarantees, freshness SLA, ownership, and how breaking changes are communicated. Ideally it's enforced in code — CI on the producer side fails if a change breaks the contract — so a schema change becomes a negotiated release rather than a 3am incident.
+
+**Q: How would you detect a problem when no single row is invalid, but the data is still wrong?**
+A: Monitor aggregates rather than rows: row counts, sums of key measures, NULL rates, and distinct counts compared with a baseline (same weekday last weeks, rolling mean ± 3σ). Add reconciliation checks against the source system. Data observability tools automate this with learned thresholds, but a few well-chosen SQL checks cover most cases.
+
+**Q: A data quality check fails in production at 5am. What do you do?**
+A: First, contain it: if it's blocking, make sure downstream consumers aren't reading partial or bad data, and mark the dataset stale if needed. Then diagnose from the stored check results and lineage — which upstream change, file, or run caused it? Communicate status to affected consumers early. Fix the root cause (or reload with correct data), then backfill idempotently and rerun checks. Afterwards, add a check or contract that would have caught it sooner.
+
+**Q: Great Expectations or dbt tests — how do you choose?**
+A: If transformations live in dbt, start with dbt tests: they sit next to the models, run as part of `dbt build`, and cover most needs with packages like dbt-utils and dbt-expectations. Use Great Expectations (or Soda, or Pandera) when data needs validating outside the warehouse — in Python or Spark pipelines, on files before loading, or when you want its rich profiling and Data Docs. Many teams use both at different layers.
+
+---
+
+## Further Reading
+
+- [dbt data tests](https://docs.getdbt.com/docs/build/data-tests) and [model contracts](https://docs.getdbt.com/docs/mesh/govern/model-contracts)
+- [Great Expectations documentation](https://docs.greatexpectations.io/docs/) (GX 1.x)
+- [Soda Core](https://docs.soda.io/) — YAML-based checks as an alternative to GX
+- [Pandera](https://pandera.readthedocs.io/) — schema validation for pandas and Polars DataFrames
+- [Elementary](https://docs.elementary-data.com/) — open-source data observability for dbt
+- [Data Contract Specification](https://datacontract.com/) — an open standard, with a CLI for testing contracts
+- *Data Quality Fundamentals* — Barr Moses, Lior Gavish & Molly Vorwerck (O'Reilly)
 
 ---
 
