@@ -440,7 +440,9 @@ docker run --rm \
     --date 2024-03-15
 ```
 
-### Packaging a dbt project
+### Packaging a SQL transformation project
+
+The same pattern applies to any CLI-driven transformation tool; this example uses dbt with its official adapter image.
 
 ```dockerfile
 FROM ghcr.io/dbt-labs/dbt-snowflake:1.7.0
@@ -480,7 +482,7 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__FERNET_KEY: ""
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
     AIRFLOW__CORE__LOAD_EXAMPLES: "false"
-    _PIP_ADDITIONAL_REQUIREMENTS: "apache-airflow-providers-snowflake apache-airflow-providers-amazon"
+    _PIP_ADDITIONAL_REQUIREMENTS: "apache-airflow-providers-postgres apache-airflow-providers-amazon"
   volumes:
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs
@@ -673,7 +675,7 @@ A: A Dockerfile with several `FROM` stages, where later stages copy only the art
 A: Never bake them into the image — anything in `ENV`, `ARG`, or a copied file stays in the layers. Inject them at runtime: environment variables populated by the orchestrator from a secrets manager, or files mounted from Kubernetes secrets or Docker secrets. For secrets needed during the build (a private package index, for example), use BuildKit's `RUN --mount=type=secret`, which isn't persisted in any layer.
 
 **Q: How would you use Docker in a data pipeline?**
-A: Package each job (a Spark job, dbt project, or Python extractor) as a versioned image built in CI and pushed to a registry. The orchestrator runs it with a specific tag — Airflow's KubernetesPodOperator or DockerOperator, ECS/Batch, or Kubernetes Jobs — passing parameters like the run date as arguments and credentials from a secrets manager. Every run is reproducible, dependencies don't conflict between jobs, and rollbacks are just "run the previous tag".
+A: Package each job (a Spark job, SQL transformation project, or Python extractor) as a versioned image built in CI and pushed to a registry. The orchestrator runs it with a specific tag — Airflow's KubernetesPodOperator or DockerOperator, ECS/Batch, or Kubernetes Jobs — passing parameters like the run date as arguments and credentials from a secrets manager. Every run is reproducible, dependencies don't conflict between jobs, and rollbacks are just "run the previous tag".
 
 ---
 

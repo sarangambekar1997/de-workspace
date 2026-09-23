@@ -615,14 +615,14 @@ log.retention.check.interval.ms=300000
 
 ```
 Pattern 1: CDC → Data Lake
-  OLTP DB → Debezium (Kafka Connect) → Kafka → S3 Sink (Kafka Connect) → Parquet files → dbt
+  OLTP DB → Debezium (Kafka Connect) → Kafka → S3 Sink (Kafka Connect) → Parquet files → SQL transformations
 
 Pattern 2: Event Stream → Real-time Aggregation
   App Events → Kafka → Flink/Spark Structured Streaming → Aggregated tables → BI
 
 Pattern 3: Fan-out
   Single event topic → multiple consumer groups:
-    → Group 1: Analytics pipeline (Snowflake load)
+    → Group 1: Analytics pipeline (warehouse load)
     → Group 2: Alerting service
     → Group 3: ML feature store
 

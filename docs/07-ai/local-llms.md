@@ -138,7 +138,7 @@ cat > Modelfile << 'EOF'
 FROM llama3.1:8b
 SYSTEM """
 You are a data engineering expert. You answer questions about:
-SQL, Python, Spark, Airflow, Kafka, dbt, and Snowflake.
+SQL, Python, Spark, orchestration, streaming, and data warehouses.
 Be concise. Use code examples.
 """
 PARAMETER temperature 0.1
@@ -297,7 +297,7 @@ embed_model = SentenceTransformer("BAAI/bge-small-en-v1.5")  # 384 dims, 30MB
 
 texts = [
     "Kafka is a distributed event streaming platform",
-    "dbt transforms data in the warehouse",
+    "SQL transformations build analytics tables in the warehouse",
     "Airflow orchestrates data pipelines",
 ]
 vecs = embed_model.encode(texts, normalize_embeddings=True)

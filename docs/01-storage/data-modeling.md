@@ -45,7 +45,7 @@ promos, payments, refunds ...      →     dim_customer ─ fct_orders ─ dim_p
 **Advanced**
 - [One Big Table (OBT)](#one-big-table-obt)
 - [Data Vault](#data-vault)
-- [Modeling for dbt](#modeling-for-dbt)
+- [Layered Transformation Architecture](#layered-transformation-architecture)
 - [Common Mistakes](#common-mistakes)
 
 **Reference**
@@ -503,7 +503,7 @@ WHERE customer_id = 'C001';
 | **3** | Previous only | Medium | Low | "Before/after" comparison |
 | **6** (hybrid) | Full + current column | Highest | High | Need both full history and easy current-state access |
 
-### dbt snapshots (SCD Type 2)
+### Tool example: dbt snapshots (SCD Type 2)
 
 ```sql
 -- snapshots/snap_customers.sql
@@ -588,19 +588,19 @@ Example:
 
 ---
 
-## Modeling for dbt
+## Layered Transformation Architecture
+
+Most teams organize warehouse transformations in layers, regardless of the tool that runs them (plain SQL scripts, stored procedures, dbt, SQLMesh, Dataform, or Spark SQL):
 
 ```
-Layered architecture (the dbt way):
-
-  Sources        Raw tables from source systems
+  Sources        Raw tables loaded from source systems
       ↓
   Staging        stg_<source>__<entity>
-                 One-to-one with source, light cleaning only:
+                 One-to-one with a source table, light cleaning only:
                  rename columns, cast types, add metadata
       ↓
   Intermediate   int_<entity>__<transformation>
-                 Business logic, joins, transformations
+                 Business logic, joins, derivations
                  Not exposed to end users
       ↓
   Marts          fct_<entity> or dim_<entity>
@@ -608,44 +608,48 @@ Layered architecture (the dbt way):
 ```
 
 ```sql
--- stg_stripe__orders.sql — staging: rename + cast only
+-- staging.stg_billing__orders — rename + cast only
+CREATE OR REPLACE VIEW staging.stg_billing__orders AS
 SELECT
     id                          AS order_id,
     customer                    AS customer_id,
-    amount / 100.0              AS amount_usd,   -- Stripe stores cents
+    amount / 100.0              AS amount,        -- source stores minor units (cents)
     status,
-    CAST(created AS TIMESTAMP)  AS created_at,
-    {{ dbt_utils.generate_surrogate_key(['id']) }} AS order_sk
-FROM {{ source('stripe', 'charges') }}
+    CAST(created AS TIMESTAMP)  AS created_at
+FROM raw.billing_orders;
 
--- int_orders__enriched.sql — intermediate: join + derive
+-- intermediate.int_orders__enriched — join + derive
+CREATE OR REPLACE VIEW intermediate.int_orders__enriched AS
 SELECT
     o.order_id,
     o.customer_id,
-    o.amount_usd,
+    o.amount,
     o.status,
     o.created_at,
     c.region,
     c.segment,
-    ROW_NUMBER() OVER (PARTITION BY o.customer_id ORDER BY o.created_at) AS customer_order_num,
-    CASE WHEN ROW_NUMBER() OVER (PARTITION BY o.customer_id ORDER BY o.created_at) = 1
-         THEN TRUE ELSE FALSE END AS is_first_order
-FROM {{ ref('stg_stripe__orders') }} o
-JOIN {{ ref('stg_salesforce__customers') }} c ON o.customer_id = c.customer_id
+    ROW_NUMBER() OVER (PARTITION BY o.customer_id ORDER BY o.created_at) AS customer_order_num
+FROM staging.stg_billing__orders o
+JOIN staging.stg_crm__customers  c ON o.customer_id = c.customer_id;
 
--- fct_orders.sql — mart: final, clean, documented
+-- marts.fct_orders — final, documented table
+CREATE OR REPLACE TABLE marts.fct_orders AS
 SELECT
     order_id,
     customer_id,
-    amount_usd,
+    amount,
     status,
     created_at,
     region,
     segment,
     customer_order_num,
-    is_first_order
-FROM {{ ref('int_orders__enriched') }}
+    customer_order_num = 1 AS is_first_order
+FROM intermediate.int_orders__enriched;
 ```
+
+**Rules that keep layers maintainable:** staging models never join; business logic lives in intermediate models; marts are the only layer BI tools read; each model has one grain and a tested primary key.
+
+> **Tooling:** transformation frameworks automate the dependency order between these layers. In dbt, for example, `FROM staging.stg_billing__orders` becomes `FROM {{ ref('stg_billing__orders') }}`, and raw tables are referenced with `{{ source('billing', 'orders') }}` — see the [dbt guide](../02-processing/dbt-reference.md).
 
 ---
 
@@ -707,7 +711,7 @@ FROM {{ ref('int_orders__enriched') }}
 | Attribute that must never change | SCD Type 0 |
 | Dashboards / BI audience | Star schema, or One Big Table in Gold |
 | Many sources, heavy audit requirements | Data Vault in the raw/integration layer, star schema on top |
-| dbt layering | `stg_` (1:1 with source) → `int_` (logic) → `fct_` / `dim_` (marts) |
+| Transformation layering | `stg_` (1:1 with source) → `int_` (logic) → `fct_` / `dim_` (marts) |
 
 **Fact table types:** transaction (one row per event) · periodic snapshot (one row per entity per period) · accumulating snapshot (one row per process, updated at milestones) · factless (events with no measures, e.g. attendance)
 

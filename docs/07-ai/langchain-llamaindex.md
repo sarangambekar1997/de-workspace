@@ -154,7 +154,7 @@ structured_prompt = ChatPromptTemplate.from_messages([
 ])
 
 chain = structured_prompt | structured_llm
-result = chain.invoke({"text": "Nightly Stripe→Snowflake job at 2am UTC"})
+result = chain.invoke({"text": "Nightly job that loads payments from the billing API into the warehouse at 2am UTC"})
 print(result)  # PipelineInfo(name=..., schedule=..., ...)
 ```
 

@@ -255,7 +255,7 @@ orders/2024/03/15/part-00000.parquet
 | **Date** | `order_date=YYYY-MM-DD` | Event/transaction data — almost always use this |
 | **Hour** | `event_hour=YYYY-MM-DD-HH` | High-volume streaming data |
 | **Region** | `region=us-east` | Geographic fan-out, compliance requirements |
-| **Source** | `source=salesforce` | Multi-source ingestion to one table |
+| **Source** | `source=crm` | Multi-source ingestion to one table |
 
 ```python
 # Write Hive-partitioned Parquet in PySpark

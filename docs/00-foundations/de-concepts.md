@@ -300,7 +300,7 @@ Source DB → [Extract] → [Transform in pipeline] → [Load] → Data Warehous
 Modern pattern. Load raw data first, transform **inside** the warehouse.
 
 ```
-Source DB → [Extract] → [Load raw] → Data Warehouse → [Transform with SQL/dbt]
+Source DB → [Extract] → [Load raw] → Data Warehouse → [Transform with SQL]
 ```
 
 - Raw data lands in a staging layer; transformations run as SQL inside the warehouse
@@ -704,7 +704,7 @@ SaaS APIs        ──────→ Airbyte        ──→     ↓
 Clickstream      ──────→ Kafka          ──→ Silver (cleaned)    BI tools
                                         ──→     ↓               (Tableau,
                                             Gold (modeled) ───→  Looker,
-                                            (dbt transforms)     Metabase)
+                                            (SQL transforms)     Metabase)
                                                  ↑
                                            Orchestrated by
                                            Airflow / Dagster
@@ -740,7 +740,7 @@ Clickstream      ──────→ Kafka          ──→ Silver (cleaned)
 | Question | If yes | If no |
 |----------|--------|-------|
 | Need results in seconds? | Streaming (Kafka + Flink/Spark) | Batch |
-| Mostly SQL-savvy team, cloud warehouse? | ELT with dbt | ETL in Spark/Python |
+| Mostly SQL-savvy team, cloud warehouse? | ELT (SQL transformations in the warehouse) | ETL in Spark/Python |
 | Many engines reading the same data? | Lakehouse with Iceberg | Warehouse-native tables |
 | Table under ~1 GB and cheap to reload? | Full load | Incremental (watermark or CDC) |
 | Source DB exposes a transaction log? | CDC (Debezium) | `updated_at` watermark + periodic reconciliation |

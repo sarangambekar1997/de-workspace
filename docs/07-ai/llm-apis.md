@@ -286,8 +286,8 @@ tools = [
                 },
                 "database": {
                     "type": "string",
-                    "description": "Target database: 'snowflake' or 'bigquery'",
-                    "enum": ["snowflake", "bigquery"]
+                    "description": "Target SQL dialect",
+                    "enum": ["postgres", "bigquery", "snowflake", "redshift", "spark"]
                 }
             },
             "required": ["query", "database"]
@@ -438,7 +438,7 @@ class PipelineMetadata(BaseModel):
 response = client.messages.parse(
     model="claude-sonnet-5",
     max_tokens=1024,
-    messages=[{"role": "user", "content": "We have a nightly job that pulls 50k new transactions from Stripe and loads them into Snowflake at 2am."}],
+    messages=[{"role": "user", "content": "We have a nightly job that pulls 50k new transactions from the payments API and loads them into the warehouse at 2am."}],
     output_format=PipelineMetadata,
 )
 metadata = response.parsed_output     # validated PipelineMetadata instance
@@ -474,7 +474,7 @@ response = client.messages.create(
     max_tokens=512,
     tools=tools,
     tool_choice={"type": "tool", "name": "extract_pipeline_metadata"},  # force this tool
-    messages=[{"role": "user", "content": "We have a nightly job that pulls 50k new transactions from Stripe and loads them into Snowflake at 2am."}]
+    messages=[{"role": "user", "content": "We have a nightly job that pulls 50k new transactions from the payments API and loads them into the warehouse at 2am."}]
 )
 
 # Extract the structured result
@@ -482,8 +482,8 @@ for block in response.content:
     if block.type == "tool_use":
         metadata = block.input
         print(metadata)
-# {'pipeline_name': 'stripe_transactions_load', 'schedule': '0 2 * * *',
-#  'source_system': 'Stripe', 'destination': 'Snowflake',
+# {'pipeline_name': 'payments_transactions_load', 'schedule': '0 2 * * *',
+#  'source_system': 'payments API', 'destination': 'warehouse',
 #  'is_incremental': True, 'estimated_rows': 50000}
 ```
 
@@ -502,7 +502,7 @@ response = client.chat.completions.create(
     response_format={"type": "json_object"},
     messages=[
         {"role": "system", "content": "Always respond with valid JSON."},
-        {"role": "user",   "content": "Extract pipeline name, schedule, and source from: nightly Stripe→Snowflake job at 2am"}
+        {"role": "user",   "content": "Extract pipeline name, schedule, and source from: nightly payments-API-to-warehouse job at 2am"}
     ]
 )
 

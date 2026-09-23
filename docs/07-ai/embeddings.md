@@ -103,8 +103,8 @@ print(f"Dimensions: {len(vec)}")    # 1536 for text-embedding-3-small
 # Multiple texts at once (up to 2048 in one call)
 vecs = embed([
     "Apache Kafka is a distributed event streaming platform",
-    "Snowflake is a cloud data warehouse",
-    "dbt transforms data in the warehouse",
+    "A cloud data warehouse stores structured data for analytics",
+    "SQL transformations turn raw tables into analytics-ready models",
 ])
 print(f"Shape: {vecs.shape}")   # (3, 1536)
 ```
@@ -133,7 +133,7 @@ from sentence_transformers import SentenceTransformer
 model = SentenceTransformer("all-MiniLM-L6-v2")   # 384 dims, fast
 vecs = model.encode([
     "Apache Kafka is a distributed event streaming platform",
-    "Snowflake is a cloud data warehouse",
+    "A cloud data warehouse stores structured data for analytics",
 ])
 print(vecs.shape)   # (2, 384)
 ```
@@ -242,9 +242,9 @@ client = OpenAI()
 # Build an in-memory index
 documents = [
     "Kafka is used for real-time event streaming",
-    "dbt transforms data in the warehouse using SQL",
+    "SQL transformations turn raw tables into analytics-ready models",
     "Airflow orchestrates data pipelines as DAGs",
-    "Snowflake is a cloud-native data warehouse",
+    "A cloud data warehouse separates storage from compute",
     "Delta Lake adds ACID transactions to data lakes",
 ]
 
@@ -269,7 +269,7 @@ results = search("how do I schedule a data pipeline?")
 for r in results:
     print(f"{r['score']:.3f}  {r['text']}")
 # 0.821  Airflow orchestrates data pipelines as DAGs
-# 0.612  dbt transforms data in the warehouse using SQL
+# 0.612  SQL transformations turn raw tables into analytics-ready models
 # 0.543  Kafka is used for real-time event streaming
 ```
 

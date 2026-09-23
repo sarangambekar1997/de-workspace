@@ -134,7 +134,7 @@ def create_training_example(user_msg: str, assistant_msg: str,
 # Example: fine-tune for SQL generation
 examples = [
     create_training_example(
-        system="You are a SQL expert. Generate Snowflake SQL only. No explanations.",
+        system="You are a SQL expert. Generate ANSI SQL only. No explanations.",
         user_msg="Count orders by status for the last 30 days",
         assistant_msg="""SELECT status, COUNT(*) AS order_count
 FROM orders
@@ -143,7 +143,7 @@ GROUP BY status
 ORDER BY order_count DESC;"""
     ),
     create_training_example(
-        system="You are a SQL expert. Generate Snowflake SQL only. No explanations.",
+        system="You are a SQL expert. Generate ANSI SQL only. No explanations.",
         user_msg="Show me the top 10 customers by revenue this year",
         assistant_msg="""SELECT c.customer_id, c.name, SUM(o.amount) AS total_revenue
 FROM orders o
@@ -265,7 +265,7 @@ print(f"Fine-tuned model: {job.fine_tuned_model}")
 response = client.chat.completions.create(
     model=job.fine_tuned_model,
     messages=[
-        {"role": "system",  "content": "You are a SQL expert. Generate Snowflake SQL only."},
+        {"role": "system",  "content": "You are a SQL expert. Generate ANSI SQL only."},
         {"role": "user",    "content": "Show total revenue by region for last quarter"}
     ]
 )
@@ -595,7 +595,7 @@ response = local_client.chat.completions.create(
 **Chat-format JSONL record**
 
 ```json
-{"messages": [{"role": "system", "content": "You write Snowflake SQL."}, {"role": "user", "content": "Count orders by status"}, {"role": "assistant", "content": "SELECT status, COUNT(*) FROM orders GROUP BY status;"}]}
+{"messages": [{"role": "system", "content": "You write ANSI SQL."}, {"role": "user", "content": "Count orders by status"}, {"role": "assistant", "content": "SELECT status, COUNT(*) FROM orders GROUP BY status;"}]}
 ```
 
 ---

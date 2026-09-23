@@ -69,7 +69,7 @@ Common failure modes:
 
 ```
 At ingestion:  fix the source, re-run — 30 minutes
-At transform:  re-run dbt models — 2 hours
+At transform:  re-run transformations — 2 hours
 At serving:    correct BI reports, notify stakeholders — 1 day
 After decision: retract analysis, rebuild trust — weeks
 ```

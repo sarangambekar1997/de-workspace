@@ -152,7 +152,7 @@ Type:"""
 ```python
 # Few-shot for consistent formatting
 prompt = """
-Convert natural language to a dbt model name.
+Convert a natural-language description into a warehouse table name.
 
 Input: "Daily revenue by region"
 Output: fct_revenue_daily_by_region
@@ -160,8 +160,8 @@ Output: fct_revenue_daily_by_region
 Input: "Customer lifetime value"
 Output: fct_customer_lifetime_value
 
-Input: "Raw orders from Stripe"
-Output: stg_stripe__orders
+Input: "Raw orders from the billing system"
+Output: stg_billing__orders
 
 Input: "Weekly active users"
 Output:"""
@@ -185,12 +185,12 @@ import anthropic
 client = anthropic.Anthropic()
 
 system = """
-You are an expert data engineer reviewing dbt models.
+You are an expert data engineer reviewing SQL transformations.
 
 When reviewing SQL:
 - Point out performance issues (missing indexes, full table scans, cartesian joins)
 - Flag correctness issues (wrong join type, NULL handling, off-by-one in date ranges)
-- Suggest dbt best practices (ref() usage, naming conventions, incremental strategies)
+- Suggest best practices (naming conventions, incremental processing, avoiding SELECT *)
 
 Format your response as:
 1. Summary (1 sentence)
@@ -278,8 +278,8 @@ prompt = """
 Extract structured information from this pipeline error log.
 
 Log:
-2024-03-15 03:42:11 ERROR airflow.task [dag_id=daily_orders, task_id=load_snowflake, run_id=scheduled__2024-03-15T02:00:00] 
-OperationalError: connection to Snowflake timed out after 30s. Retry 3/3.
+2024-03-15 03:42:11 ERROR airflow.task [dag_id=daily_orders, task_id=load_warehouse, run_id=scheduled__2024-03-15T02:00:00] 
+OperationalError: connection to warehouse timed out after 30s. Retry 3/3.
 
 Return ONLY valid JSON with these fields:
 {
@@ -305,9 +305,9 @@ print(result)
 #   "timestamp": "2024-03-15T03:42:11",
 #   "severity": "ERROR",
 #   "pipeline": "daily_orders",
-#   "task": "load_snowflake",
+#   "task": "load_warehouse",
 #   "error_type": "OperationalError",
-#   "message": "Snowflake connection timed out after 30s, exhausted 3 retries",
+#   "message": "Warehouse connection timed out after 30s, exhausted 3 retries",
 #   "is_retryable": true
 # }
 ```
@@ -373,16 +373,16 @@ def call(system: str, user: str) -> str:
 # Step 1: Extract intent
 intent = call(
     system="Extract the user's data engineering intent as a single sentence.",
-    user="I need something that loads new orders from S3 every hour and puts them in Snowflake"
+    user="I need something that loads new orders from object storage every hour and puts them in the warehouse"
 )
-# → "Load new orders from S3 to Snowflake on an hourly schedule"
+# → "Load new orders from object storage into the warehouse on an hourly schedule"
 
 # Step 2: Generate component list
 components = call(
     system="List the data pipeline components needed. Output as a JSON array of strings.",
     user=f"Intent: {intent}"
 )
-# → ["S3 source bucket", "Snowflake destination table", "Airflow DAG", "schedule: @hourly", "incremental load logic"]
+# → ["source bucket", "warehouse destination table", "orchestration DAG", "schedule: @hourly", "incremental load logic"]
 
 # Step 3: Generate code
 code = call(
@@ -532,7 +532,7 @@ for version in ["v1", "v2", "v3"]:
 **Prompt skeleton**
 
 ```text
-<role>You are a data engineer who writes Snowflake SQL for analysts.</role>
+<role>You are a data engineer who writes SQL for analysts in {sql_dialect}.</role>
 
 <task>Write a query that answers the question below.</task>
 
