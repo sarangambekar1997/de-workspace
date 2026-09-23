@@ -314,15 +314,15 @@ Source DB → [Extract] → [Load raw] → Data Warehouse → [Transform with SQ
 
 A pipeline is **idempotent** if running it multiple times produces the same result as running it once. Critical for safe reruns after failures.
 
-```python
-# NOT idempotent — appends duplicates on rerun
+```sql
+-- NOT idempotent — appends duplicates on rerun
 INSERT INTO orders SELECT * FROM staging_orders WHERE date = '2024-03-15';
 
-# Idempotent — deletes first, then inserts
+-- Idempotent — deletes first, then inserts (run both in one transaction)
 DELETE FROM orders WHERE order_date = '2024-03-15';
 INSERT INTO orders SELECT * FROM staging_orders WHERE date = '2024-03-15';
 
-# Idempotent — upsert pattern
+-- Idempotent — upsert pattern
 INSERT INTO orders (...)
 SELECT ...
 ON CONFLICT (order_id) DO UPDATE SET ...;

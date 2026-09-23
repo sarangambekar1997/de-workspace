@@ -53,6 +53,12 @@ Trade-offs:
 - [Local RAG Pipeline](#local-rag-pipeline)
 - [Hardware Guide](#hardware-guide)
 
+**Reference**
+- [Common Pitfalls](#common-pitfalls)
+- [Cheat Sheet](#cheat-sheet)
+- [Interview Questions](#interview-questions)
+- [Further Reading](#further-reading)
+
 ---
 
 ## Ollama — Easiest Local Setup
@@ -90,6 +96,8 @@ ollama run mistral "What is a data lakehouse?"
 ---
 
 ## Available Models
+
+> Open-weight models move fast. The examples use Llama 3.x, Mistral, and code models; newer families (e.g. Qwen, Gemma, newer Llama and Mistral releases, OpenAI's gpt-oss) are often better at the same size. Browse [ollama.com/library](https://ollama.com/library) and compare on your own tasks.
 
 | Model | Size | Best for | GPU needed |
 |-------|------|----------|------------|
@@ -480,12 +488,13 @@ CPU-only (no GPU):
 
 Consumer GPU (RTX 3090/4090 — 24GB VRAM):
   Fast (~30-80 tokens/sec)
-  Fits: 7B-13B models at fp16, 70B models at 4-bit
-  Best models: Llama 3.1 8B, Mistral 7B, CodeLlama 13B
+  Fits: 7-8B models at fp16, up to ~30B models at 4-bit
+  (70B at 4-bit needs ~40GB — two 24GB cards or one 48GB card)
+  Best models: Llama 3.1 8B, Mistral 7B, CodeLlama 13B (4-bit)
 
-Data center GPU (A10G — 24GB, A100 — 80GB):
+Data center GPU (A10G — 24GB, A100/H100 — 80GB):
   Very fast (~100-200 tokens/sec)
-  Fits: 70B models at fp16 on A100
+  Fits on one 80GB GPU: 70B at 4-bit or 8-bit (~70GB); fp16 70B (~140GB) needs 2+ GPUs
   Best models: Llama 3.1 70B, Mixtral 8x7B
 
 Apple Silicon (M1/M2/M3 — unified memory):
@@ -494,12 +503,52 @@ Apple Silicon (M1/M2/M3 — unified memory):
   M2 Max (96GB): can run 70B models
   Use: Ollama on Mac — "just works"
 
-Memory requirement guide:
-  Model size (billion params) × 2 = GB VRAM for fp16
-  Model size × 0.75 = GB VRAM for 8-bit
-  Model size × 0.5  = GB VRAM for 4-bit
-  Example: 7B model = 14GB fp16, ~5GB 4-bit
+Memory requirement guide (weights only — add 10-30% for KV cache and runtime,
+more for long contexts or many concurrent requests):
+  Model size (billion params) × 2   = GB for fp16/bf16
+  Model size × 1                    = GB for 8-bit
+  Model size × ~0.55                = GB for 4-bit (e.g. Q4_K_M)
+  Example: 7B model = 14GB fp16, ~7GB 8-bit, ~4GB 4-bit
 ```
+
+---
+
+## Common Pitfalls
+
+| Pitfall | Symptom | Fix |
+|---------|---------|-----|
+| Expecting frontier-model quality from a small local model | Wrong SQL, missed instructions, weak reasoning | Evaluate on your own tasks; use local models for narrow, well-defined work, or fine-tune |
+| Sizing hardware from parameter count alone | Out-of-memory errors under real load | Budget for weights *plus* KV cache (context length × concurrency) |
+| Default context window (e.g. 2–4k tokens in Ollama) | Long prompts silently truncated; RAG answers ignore the context | Raise `num_ctx` (Ollama) or `--max-model-len` (vLLM), within memory limits |
+| Over-aggressive quantization (2–3 bit) | Noticeably worse output | Start at 4-bit (Q4_K_M) or 8-bit; compare quality on your eval set |
+| Using Ollama for high-concurrency production serving | Low throughput, long queues | vLLM, SGLang, or TGI with continuous batching |
+| Mismatched chat template | Rambling output or ignored instructions | Use the model's own chat template (the tools apply it; watch custom setups) |
+| Assuming "local" means "safe" by default | An exposed endpoint on the network with no auth | Bind to localhost or put it behind auth; keep Ollama/vLLM ports off the public internet |
+| Model licences ignored | Legal risk in commercial use | Check each model's licence (Llama, Gemma, Qwen, Mistral all differ) |
+| CPU-only inference for batch jobs at scale | Jobs take days | A GPU (even a cloud spot instance) or a hosted API for large batches |
+
+---
+
+## Cheat Sheet
+
+| Task | Command |
+|------|---------|
+| Install Ollama (Linux) | `curl -fsSL https://ollama.com/install.sh \| sh` |
+| Download / run a model | `ollama pull llama3.1:8b` · `ollama run llama3.1:8b` |
+| List / remove / inspect | `ollama list` · `ollama rm <model>` · `ollama show <model>` |
+| What's loaded in memory | `ollama ps` |
+| Custom model with a system prompt | `Modelfile` with `FROM` + `SYSTEM` + `PARAMETER num_ctx 8192` → `ollama create my-model -f Modelfile` |
+| OpenAI-compatible endpoint | Ollama `http://localhost:11434/v1` · vLLM `http://localhost:8000/v1` |
+| Python client | `OpenAI(base_url="http://localhost:11434/v1", api_key="ollama")` |
+| Local embeddings | `ollama pull nomic-embed-text` |
+| Production serving | `vllm serve <hf-model-id> --max-model-len 8192 --gpu-memory-utilization 0.9` |
+| Check the GPU | `nvidia-smi` (NVIDIA) · Activity Monitor → GPU (Apple Silicon) |
+
+**Which tool?** Trying models on a laptop → Ollama or LM Studio · Python experiments and fine-tuning → Hugging Face Transformers · serving many concurrent users → vLLM / SGLang / TGI · Apple Silicon → Ollama or MLX
+
+**Quantization formats:** GGUF (llama.cpp, Ollama, LM Studio — CPU/Apple/GPU) · AWQ / GPTQ (GPU serving with vLLM) · bitsandbytes 4/8-bit (Transformers, QLoRA training)
+
+**Local vs API:** choose local when data can't leave your network, for offline use, or at high, steady volume · choose an API for the best quality, spiky workloads, or when you don't want to run GPUs
 
 ---
 
@@ -513,6 +562,17 @@ A: Quantization reduces the number of bits used to represent each model weight, 
 
 **Q: What is Ollama and how does it differ from vLLM?**
 A: Both serve local LLMs, but for different use cases. Ollama is a developer-friendly tool for running models locally with a simple CLI and OpenAI-compatible API — great for development and single-user inference. vLLM is a production inference server focused on maximum throughput via PagedAttention and continuous batching — designed for serving hundreds of concurrent requests, 2-24x faster than naive serving. Use Ollama for development; vLLM for production deployment.
+
+---
+
+## Further Reading
+
+- [Ollama documentation](https://github.com/ollama/ollama/tree/main/docs) and [model library](https://ollama.com/library)
+- [vLLM documentation](https://docs.vllm.ai/)
+- [llama.cpp](https://github.com/ggml-org/llama.cpp) — the engine behind GGUF and many local tools
+- [Hugging Face Open LLM Leaderboard](https://huggingface.co/spaces/open-llm-leaderboard/open_llm_leaderboard)
+- [LM Studio](https://lmstudio.ai/docs)
+- [Fine-Tuning LLMs](fine-tuning.md) — adapting an open model to your task
 
 ---
 

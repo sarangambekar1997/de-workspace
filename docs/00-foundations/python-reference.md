@@ -413,6 +413,8 @@ finally:
 raise ValueError("salary must be positive")
 
 # Re-raise the current exception
+try:
+    process(record)
 except Exception as e:
     logger.error("Failed: %s", e)
     raise   # re-raise without losing original traceback
