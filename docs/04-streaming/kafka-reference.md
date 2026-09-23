@@ -53,6 +53,12 @@ Orders → Notifications         ┌─────────────┼�
 - [Performance Tuning](#performance-tuning)
 - [Kafka in DE Pipelines](#kafka-in-de-pipelines)
 
+**Reference**
+- [Common Pitfalls](#common-pitfalls)
+- [Cheat Sheet](#cheat-sheet)
+- [Interview Questions](#interview-questions)
+- [Further Reading](#further-reading)
+
 ---
 
 ## What is Kafka?
@@ -95,7 +101,7 @@ IoT Device  ──write──→  [sensors topic]      ──read──→  Aler
 | **Consumer Group** | Set of consumers sharing the work of reading a topic |
 | **Broker** | A single Kafka server that stores partitions |
 | **Cluster** | Multiple brokers working together |
-| **Zookeeper / KRaft** | Metadata coordination (Zookeeper being replaced by KRaft in Kafka 3.x) |
+| **KRaft (formerly ZooKeeper)** | Cluster metadata and controller election. Kafka 4.0 removed ZooKeeper — new clusters run in KRaft mode only |
 | **Replication Factor** | How many brokers hold a copy of each partition |
 | **Leader / Follower** | One broker leads each partition; followers replicate it |
 | **ISR** | In-Sync Replicas — followers caught up to the leader |
@@ -223,7 +229,7 @@ consumer = KafkaConsumer(
     "order-events",
     group_id="analytics-pipeline",
     enable_auto_commit=False,     # disable auto-commit
-    ...
+    bootstrap_servers=["kafka:9092"],
 )
 
 for message in consumer:
@@ -311,7 +317,9 @@ consumer.subscribe(["order-events"], listener=RebalanceHandler())
 
 ```python
 KafkaConsumer(
-    ...
+    "order-events",
+    bootstrap_servers=["kafka:9092"],
+    group_id="analytics-pipeline",
     session_timeout_ms=30000,          # consumer declared dead after 30s of silence
     heartbeat_interval_ms=10000,       # send heartbeat every 10s
     max_poll_interval_ms=300000,       # max time between poll() calls (5 min)
@@ -424,7 +432,7 @@ producer.flush()
 ### confluent-kafka (recommended — wraps librdkafka, high performance)
 
 ```python
-from confluent_kafka import Producer, Consumer, KafkaError
+from confluent_kafka import Producer, Consumer, KafkaError, KafkaException
 import json
 
 # Producer
@@ -467,7 +475,7 @@ try:
         if msg.error():
             if msg.error().code() == KafkaError._PARTITION_EOF:
                 continue    # end of partition — not an error
-            raise KafkaError(msg.error())
+            raise KafkaException(msg.error())
 
         data = json.loads(msg.value().decode("utf-8"))
         process(data)
@@ -562,26 +570,32 @@ producer.send("customer-state", key=b"customer_42", value=None)
 
 ## Performance Tuning
 
+Property names differ between clients: `confluent-kafka` (librdkafka) rejects Java-client names like `buffer.memory` or `max.poll.records`.
+
 ### Producer
 
 ```python
+# confluent-kafka / librdkafka names
 Producer({
-    "linger.ms":       20,       # wait up to 20ms to batch messages
-    "batch.size":      65536,    # 64KB batch size
-    "compression.type": "snappy", # compress batches
-    "buffer.memory":   67108864, # 64MB producer buffer
+    "linger.ms":                  20,       # wait up to 20ms to batch messages
+    "batch.size":                 65536,    # 64KB batch size
+    "compression.type":           "zstd",   # compress batches (lz4/snappy also common)
+    "queue.buffering.max.kbytes": 65536,    # 64MB local buffer (Java client: buffer.memory)
 })
 ```
 
 ### Consumer
 
 ```python
+# confluent-kafka / librdkafka names
 Consumer({
-    "fetch.min.bytes":          1024,    # wait for at least 1KB before returning
-    "fetch.max.wait.ms":        500,     # wait up to 500ms for fetch.min.bytes
-    "max.partition.fetch.bytes": 1048576, # 1MB max per partition per fetch
-    "max.poll.records":         500,     # max records per poll()
+    "group.id":                  "analytics-pipeline",
+    "fetch.min.bytes":           1024,      # wait for at least 1KB before returning
+    "fetch.wait.max.ms":         500,       # ...or 500ms, whichever comes first
+    "max.partition.fetch.bytes": 1048576,   # 1MB max per partition per fetch
 })
+# Batch size per call is controlled in code: consumer.consume(num_messages=500, timeout=1.0)
+# (the Java client and kafka-python use max.poll.records instead)
 ```
 
 ### Broker
@@ -643,21 +657,68 @@ High lag = consumer is falling behind producers. Investigate:
 ```python
 dlq_producer = Producer({"bootstrap.servers": "kafka:9092"})
 
-for msg in consumer:
+while True:
+    msg = consumer.poll(timeout=1.0)
+    if msg is None or msg.error():
+        continue
     try:
-        process(msg.value)
-        consumer.commit()
+        process(msg.value())
     except Exception as e:
-        # Send failed message to DLQ for later inspection/reprocessing
+        # Send the failed message to a DLQ for later inspection/reprocessing
         dlq_producer.produce(
             "order-events-dlq",
             key=msg.key(),
             value=msg.value(),
-            headers={"error": str(e), "original_topic": msg.topic()}
+            headers={"error": str(e), "original_topic": msg.topic(),
+                     "original_offset": str(msg.offset())},
         )
         dlq_producer.flush()
-        consumer.commit()   # commit past the bad message
+    consumer.commit(message=msg, asynchronous=False)   # move past the message either way
 ```
+
+---
+
+## Common Pitfalls
+
+| Pitfall | Symptom | Fix |
+|---------|---------|-----|
+| Auto-commit on, processing done afterwards | Messages lost when a consumer crashes mid-batch (offset already committed) | `enable.auto.commit=false`; commit after processing succeeds |
+| Assuming exactly-once end to end | Occasional duplicates in the warehouse | At-least-once plus idempotent writes (upsert on an event ID); transactions only where really needed |
+| Too few partitions | Can't scale consumers past the partition count | Size for peak throughput and future consumers; you can add partitions, never remove them |
+| Adding partitions to a keyed topic | Keys move to different partitions — per-key ordering breaks | Choose the partition count up front; if you must change it, migrate to a new topic |
+| Hot keys (one `customer_id` producing most events) | One partition and its consumer lag while others sit idle | Better key choice, key salting, or a separate topic for the heavy hitter |
+| `acks=1` / idempotence off for important data | Lost or duplicated messages on broker failover | `acks=all`, `enable.idempotence=true`, `min.insync.replicas=2` with replication factor 3 |
+| Slow processing inside the poll loop | `max.poll.interval.ms` exceeded → rebalance storms | Keep per-message work small; process in batches; hand heavy work to a worker pool |
+| JSON without a schema contract | A producer renames a field and every consumer breaks | Avro/Protobuf + Schema Registry with a compatibility mode (usually `BACKWARD`) |
+| Poison messages retried forever | One bad record blocks the partition | Retry a few times, then send it to a dead-letter topic with error headers |
+| Retention shorter than your recovery time | Can't replay after an outage or a bug fix | Set retention to cover your worst-case recovery window; archive to S3 for longer history |
+| Nobody watching consumer lag | The "real-time" dashboard is hours behind | Alert on lag (in messages and in time) per consumer group |
+| Using Kafka as a database | Lookups need full scans; data expires | Kafka is a log; sink to a database, warehouse, or lakehouse for querying |
+
+---
+
+## Cheat Sheet
+
+| Task | Command |
+|------|---------|
+| Create a topic | `kafka-topics.sh --bootstrap-server b:9092 --create --topic t --partitions 6 --replication-factor 3` |
+| Describe (leaders, ISR) | `kafka-topics.sh --bootstrap-server b:9092 --describe --topic t` |
+| Change a topic setting | `kafka-configs.sh --bootstrap-server b:9092 --alter --entity-type topics --entity-name t --add-config retention.ms=604800000` |
+| Tail a topic | `kafka-console-consumer.sh --bootstrap-server b:9092 --topic t --from-beginning --property print.key=true` |
+| Produce test messages | `kafka-console-producer.sh --bootstrap-server b:9092 --topic t --property parse.key=true --property key.separator=:` |
+| Consumer lag | `kafka-consumer-groups.sh --bootstrap-server b:9092 --describe --group g` |
+| Replay from a point in time | `kafka-consumer-groups.sh ... --group g --topic t --reset-offsets --to-datetime 2024-03-15T00:00:00.000 --execute` (group must be stopped) |
+| Handy CLI | `kcat -b b:9092 -t t -C -o -10 -e` (last 10 messages) |
+
+**Reliable producer:** `acks=all` · `enable.idempotence=true` · `compression.type=zstd` · `linger.ms=5–20` · a key when per-entity ordering matters
+
+**Reliable consumer:** `enable.auto.commit=false` · commit after processing · idempotent sink · dead-letter topic · lag alerting · `auto.offset.reset=earliest` for pipelines
+
+**Topic defaults for production:** replication factor 3 · `min.insync.replicas=2` · retention sized to your replay needs · `cleanup.policy=compact` for "latest value per key" topics
+
+**Schema compatibility modes:** `BACKWARD` (new consumers can read old data — the default) · `FORWARD` (old consumers can read new data) · `FULL` (both)
+
+**Ecosystem map:** Kafka Connect (Debezium CDC, S3/Snowflake/Iceberg sinks) · Schema Registry · Kafka Streams (Java) · Flink / Spark Structured Streaming · managed services: Confluent Cloud, Amazon MSK, Redpanda, Aiven
 
 ---
 
@@ -677,6 +738,32 @@ A: Without a key, messages are distributed round-robin across partitions — goo
 
 **Q: What is the difference between Kafka and a traditional message queue like RabbitMQ?**
 A: In a queue, each message is consumed by exactly one consumer and deleted after acknowledgment. In Kafka, messages are written to a log and retained for a configurable period — any number of consumer groups can read them independently, and consumers can rewind and reprocess. Kafka scales to millions of messages/sec; queues are better for task distribution and work queues where retention isn't needed.
+
+**Q: How does Kafka guarantee ordering?**
+A: Only within a partition. Messages with the same key are hashed to the same partition, so all events for one `order_id` are read in the order they were written. There's no ordering across partitions. With retries enabled, the idempotent producer (the default since Kafka 3.0) keeps ordering intact within a partition even when sends are retried.
+
+**Q: What are replication, ISR, and `min.insync.replicas`?**
+A: Each partition has a leader and follower replicas on other brokers (the replication factor). The ISR is the set of replicas fully caught up with the leader. With `acks=all`, a write succeeds only once every in-sync replica has it, and `min.insync.replicas` sets how many that must be — with RF=3 and `min.insync.replicas=2`, the cluster tolerates one broker failure without losing acknowledged data, and rejects writes rather than risk loss if two replicas are down.
+
+**Q: What is log compaction and when would you use it?**
+A: Instead of deleting data by age, a compacted topic keeps at least the latest message for each key and removes older versions in the background (a message with a null value, called a tombstone, deletes the key). It turns a topic into a changelog of current state — used for CDC "latest row" topics, Kafka Streams state stores, and Kafka's own `__consumer_offsets` topic.
+
+**Q: How does Kafka achieve exactly-once processing?**
+A: Three pieces. The idempotent producer attaches a producer ID and sequence numbers so broker-side retries don't create duplicates. Transactions let a producer write to several partitions *and* commit consumer offsets atomically, so a read-process-write cycle either fully happens or doesn't. Consumers use `isolation.level=read_committed` so they never see aborted writes. This covers Kafka-to-Kafka pipelines; for external sinks you still need idempotent writes or transactional connectors.
+
+**Q: How would you get changes from a Postgres database into a data lake in near real time?**
+A: CDC with Debezium running on Kafka Connect: it reads Postgres's write-ahead log (via logical replication) and publishes every insert, update, and delete as an event to a topic per table, with before/after images. A sink — an S3/Iceberg sink connector, or a Spark/Flink job — writes those events to the lake and applies them with `MERGE` to keep a current-state table, often alongside an append-only history table. Avro plus Schema Registry handles schema changes, and log compaction on the topics keeps the latest state per key.
+
+---
+
+## Further Reading
+
+- [Apache Kafka documentation](https://kafka.apache.org/documentation/)
+- [Confluent Developer courses](https://developer.confluent.io/courses/) — free, from fundamentals to internals
+- [confluent-kafka Python client](https://docs.confluent.io/platform/current/clients/confluent-kafka-python/html/index.html) and the [librdkafka configuration reference](https://github.com/confluentinc/librdkafka/blob/master/CONFIGURATION.md)
+- [Debezium documentation](https://debezium.io/documentation/)
+- *Kafka: The Definitive Guide, 2nd Edition* — Gwen Shapira, Todd Palino, Rajini Sivaram & Krit Petty (O'Reilly)
+- [kcat](https://github.com/edenhill/kcat) — the netcat of Kafka, great for debugging
 
 ---
 
