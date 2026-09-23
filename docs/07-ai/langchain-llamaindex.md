@@ -7,6 +7,24 @@
 
 ---
 
+## Plain English: What Are LangChain and LlamaIndex?
+
+**The problem:** Building an LLM application involves the same plumbing again and again: loading PDFs and web pages, splitting them into chunks, calling an embedding model, writing to a vector store, retrieving, formatting prompts, calling the model, parsing the output, and tracing it all. Writing that from scratch for every project is slow — and switching from one model provider or vector database to another means rewriting it.
+
+**These frameworks are the fix:** libraries of ready-made, swappable building blocks.
+- **LangChain** focuses on composing steps — models, prompts, tools, and retrievers — into chains and agents (its LangGraph library handles stateful, multi-step agents).
+- **LlamaIndex** focuses on *data*: ingesting documents, building indexes, and advanced retrieval for question-answering over your content.
+
+```
+            ┌── loaders (S3, Confluence, PDFs, SQL) ──┐
+ your data ─┤   splitters · embeddings · vector stores ├──→ retriever ──→ prompt ──→ LLM ──→ parser
+            └─────────── all interchangeable ──────────┘       (framework glue + tracing)
+```
+
+**The trade-off:** you move faster at first and can swap components easily, but you take on extra abstraction layers, frequent API changes, and harder debugging. Many teams prototype with a framework and keep it only where it clearly saves effort.
+
+---
+
 ## Table of Contents
 
 **Basic**
@@ -25,6 +43,12 @@
 - [Custom Retrievers](#custom-retrievers)
 - [LangSmith (Tracing & Evals)](#langsmith-tracing--evals)
 - [When to Use a Framework vs Raw SDK](#when-to-use-a-framework-vs-raw-sdk)
+
+**Reference**
+- [Common Pitfalls](#common-pitfalls)
+- [Cheat Sheet](#cheat-sheet)
+- [Interview Questions](#interview-questions)
+- [Further Reading](#further-reading)
 
 ---
 
@@ -47,7 +71,7 @@
 ## LangChain Setup
 
 ```bash
-pip install langchain langchain-anthropic langchain-openai langchain-community
+pip install langchain langchain-anthropic langchain-openai langchain-community langchain-text-splitters   # LangChain 1.x
 pip install faiss-cpu                  # local vector store
 pip install langchain-chroma           # Chroma vector store
 ```
@@ -105,8 +129,8 @@ print(response.content)
 ### Output parsers
 
 ```python
-from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
-from langchain_core.pydantic_v1 import BaseModel
+from langchain_core.output_parsers import StrOutputParser
+from pydantic import BaseModel      # langchain_core.pydantic_v1 was removed in langchain-core 0.3
 
 # String output
 chain = prompt | llm | StrOutputParser()
@@ -120,14 +144,16 @@ class PipelineInfo(BaseModel):
     source:      str
     destination: str
 
-parser = JsonOutputParser(pydantic_object=PipelineInfo)
+# with_structured_output uses the provider's native structured output / tool calling —
+# more reliable than asking for JSON in the prompt and parsing it
+structured_llm = llm.with_structured_output(PipelineInfo)
 
 structured_prompt = ChatPromptTemplate.from_messages([
-    ("system", "Extract pipeline info as JSON. {format_instructions}"),
+    ("system", "Extract the pipeline details."),
     ("human",  "{text}"),
-]).partial(format_instructions=parser.get_format_instructions())
+])
 
-chain = structured_prompt | llm | parser
+chain = structured_prompt | structured_llm
 result = chain.invoke({"text": "Nightly Stripe→Snowflake job at 2am UTC"})
 print(result)  # PipelineInfo(name=..., schedule=..., ...)
 ```
@@ -138,8 +164,8 @@ print(result)  # PipelineInfo(name=..., schedule=..., ...)
 
 ```python
 from langchain_community.document_loaders import DirectoryLoader, TextLoader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.vectorstores import Chroma
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_chroma import Chroma
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
@@ -208,7 +234,7 @@ for chunk in rag_chain.stream("Explain PySpark window functions"):
 ### With metadata filtering
 
 ```python
-from langchain_community.vectorstores import Chroma
+from langchain_chroma import Chroma
 
 retriever = vectorstore.as_retriever(
     search_type="similarity",
@@ -225,8 +251,7 @@ retriever = vectorstore.as_retriever(
 
 ```python
 from langchain_anthropic import ChatAnthropic
-from langchain.agents import AgentExecutor, create_tool_calling_agent
-from langchain_core.prompts import ChatPromptTemplate
+from langchain.agents import create_agent          # LangChain 1.0+
 from langchain_core.tools import tool
 
 # ── Define tools with @tool decorator ─────────────────────────────────────────
@@ -252,19 +277,21 @@ def check_pipeline_status(pipeline_name: str) -> str:
 tools = [run_sql, get_table_schema, check_pipeline_status]
 
 # ── Build agent ────────────────────────────────────────────────────────────────
+# LangChain 1.0 replaced AgentExecutor / create_tool_calling_agent (now in the
+# langchain-classic package) with create_agent, which runs on LangGraph.
 llm = ChatAnthropic(model="claude-sonnet-5")
 
-prompt = ChatPromptTemplate.from_messages([
-    ("system", "You are a data engineering assistant. Use tools to answer accurately."),
-    ("human",  "{input}"),
-    ("placeholder", "{agent_scratchpad}"),
-])
+agent = create_agent(
+    model=llm,
+    tools=tools,
+    system_prompt="You are a data engineering assistant. Use tools to answer accurately.",
+)
 
-agent          = create_tool_calling_agent(llm, tools, prompt)
-agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True, max_iterations=10)
-
-result = agent_executor.invoke({"input": "How many orders do we have and is the pipeline healthy?"})
-print(result["output"])
+result = agent.invoke(
+    {"messages": [{"role": "user", "content": "How many orders do we have and is the pipeline healthy?"}]},
+    config={"recursion_limit": 20},     # cap the number of agent steps
+)
+print(result["messages"][-1].text)     # final answer text
 ```
 
 ---
@@ -523,6 +550,80 @@ Use LlamaIndex when:
   ✓ Working with large document collections
   ✓ Want higher-level RAG abstractions out of the box
 ```
+
+---
+
+## Common Pitfalls
+
+| Pitfall | Symptom | Fix |
+|---------|---------|-----|
+| Copying tutorials written for older versions | `ImportError`s: `langchain.text_splitter`, `pydantic_v1`, `ServiceContext`, `AgentExecutor` | Check the version; use the split packages (`langchain-*` integrations, `langchain-text-splitters`) and current APIs (`create_agent`, `Settings`) |
+| Unpinned framework versions | A minor upgrade breaks production | Pin exact versions; upgrade deliberately with tests |
+| Default chunking and retrieval settings | Mediocre answers that no prompt fixes | Tune chunk size, k, and re-ranking on an eval set |
+| Parsing JSON from free text | Intermittent parse failures | `llm.with_structured_output(PydanticModel)` (LangChain) or structured outputs in LlamaIndex |
+| Abstractions hiding the actual prompt | Can't tell why the model behaved oddly | Turn on tracing (LangSmith, Langfuse, OpenTelemetry) and read the real prompts |
+| Agents with no step limit | Runaway loops and bills | `recursion_limit` / `max_iterations`, and cost guards |
+| Rebuilding the index on every app start | Slow startup; repeated embedding costs | Persist the index or vector store; load it instead of rebuilding |
+| Using a framework for a single API call | Extra dependencies and complexity for no gain | Call the provider SDK directly |
+
+---
+
+## Cheat Sheet
+
+**LangChain (1.x)**
+
+| Task | Code |
+|------|------|
+| Chat model | `ChatAnthropic(model="claude-sonnet-5")` · `ChatOpenAI(model=...)` |
+| Call it | `llm.invoke("question")` → `.text` · `llm.stream(...)` · `llm.batch([...])` |
+| Prompt + model + parser (LCEL) | `chain = prompt \| llm \| StrOutputParser()` → `chain.invoke({...})` |
+| Structured output | `llm.with_structured_output(MyPydanticModel)` |
+| Split text | `RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=100).split_documents(docs)` |
+| Vector store → retriever | `Chroma.from_documents(docs, embeddings).as_retriever(search_kwargs={"k": 5})` |
+| Tool | `@tool` on a typed function with a docstring |
+| Agent | `create_agent(model=llm, tools=[...], system_prompt="...")` → `.invoke({"messages": [...]})` |
+| Fallback model | `primary.with_fallbacks([backup])` |
+| Retries | `llm.with_retry(stop_after_attempt=3)` |
+
+**LlamaIndex**
+
+| Task | Code |
+|------|------|
+| Global model settings | `Settings.llm = Anthropic(model="claude-sonnet-5")` · `Settings.embed_model = ...` |
+| Load documents | `SimpleDirectoryReader("docs/").load_data()` |
+| Build an index | `VectorStoreIndex.from_documents(docs)` |
+| Ask questions | `index.as_query_engine(similarity_top_k=5).query("...")` |
+| Chat over data | `index.as_chat_engine()` |
+| Persist / load | `index.storage_context.persist("./storage")` · `load_index_from_storage(StorageContext.from_defaults(persist_dir="./storage"))` |
+| Filter | `MetadataFilters(filters=[MetadataFilter(key="source", value="runbooks")])` |
+
+**Choosing:** a single call or simple extraction → provider SDK · RAG over many documents → LlamaIndex · multi-step agents with state, branching, and human approval → LangGraph / LangChain · heavy production requirements → often your own thin layer on the SDK
+
+---
+
+## Interview Questions
+
+**Q: When would you use LangChain or LlamaIndex, and when would you use the raw SDK?**
+A: Use a framework when it removes real work: many document loaders and vector-store integrations, standard RAG patterns, provider swapping, or agent orchestration with state and checkpoints. Use the raw SDK for simple or performance-critical paths where you want full control over prompts, retries, and costs, fewer dependencies, and the newest provider features the day they launch. A common pattern is to prototype with a framework and harden the critical path on the SDK.
+
+**Q: What is LCEL?**
+A: The LangChain Expression Language composes components ("runnables") with the pipe operator — `prompt | llm | parser` — into a chain. Every runnable has the same interface (`invoke`, `batch`, `stream`, and async versions), so a composed chain automatically supports streaming, batching, parallel branches (`RunnableParallel`), fallbacks, and retries, and shows up in tracing.
+
+**Q: How does LlamaIndex build and query an index?**
+A: It loads documents into `Document` objects, splits them into nodes (chunks) with a node parser, embeds each node, and stores them in a vector store behind a `VectorStoreIndex`. At query time, a retriever finds the top-k similar nodes (optionally filtered and re-ranked), and a response synthesizer puts them into a prompt and calls the LLM. Query engines like the sub-question engine break complex questions into smaller ones across several indexes.
+
+**Q: How do you debug a LangChain or LlamaIndex application?**
+A: Tracing first: LangSmith, Langfuse, or an OpenTelemetry-based tool shows every step — the rendered prompts, retrieved chunks, tool calls, token counts, and latencies. Check retrieval separately from generation (did the right chunks come back?), reproduce failures with the exact inputs from the trace, and add them to an evaluation set so the fix is locked in.
+
+---
+
+## Further Reading
+
+- [LangChain documentation](https://docs.langchain.com/) and [LangGraph](https://langchain-ai.github.io/langgraph/)
+- [LangChain v1 migration guide](https://docs.langchain.com/oss/python/migrate/langchain-v1)
+- [LlamaIndex documentation](https://docs.llamaindex.ai/)
+- [LangSmith](https://docs.smith.langchain.com/) — tracing and evaluation
+- [Anthropic: Building effective agents](https://www.anthropic.com/engineering/building-effective-agents) — when frameworks help and when they hide too much
 
 ---
 

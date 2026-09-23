@@ -7,6 +7,24 @@
 
 ---
 
+## Plain English: What Is an AI Agent?
+
+**The problem:** A plain LLM call is a single question and a single answer. It can't look anything up, check whether its SQL actually runs, or take the next step based on what it found. For "why is the orders dashboard wrong today?", a human would check freshness, look at the DAG run, query the table, and compare with the source — several steps, each depending on the last.
+
+**An agent is the fix:** you give the model *tools* (functions it may ask you to run — `run_sql`, `get_dag_status`, `search_docs`) and let it work in a loop: decide on the next action, you execute it, it reads the result, and it decides again — until it can answer.
+
+```
+goal ──→ model: "check freshness first"  ──→ run tool: get_table_freshness("fct_orders")
+            ↑                                      │
+            └────── result: "last load 26h ago" ←──┘
+         model: "check the DAG"  ──→ get_dag_runs("orders_daily") → "failed at load_to_snowflake"
+         model: "Answer: yesterday's load failed at load_to_snowflake; data is 26h stale."
+```
+
+**The design rule:** use the *least* autonomy that solves the problem. A fixed pipeline of LLM calls (a workflow) is cheaper, faster, and easier to test than an agent. Reach for an agent when the steps genuinely can't be known in advance — and then invest in guardrails: limited tools, budgets, approvals, and logging.
+
+---
+
 ## Table of Contents
 
 **Basic**
@@ -25,6 +43,12 @@
 - [Agent Memory](#agent-memory)
 - [Human-in-the-Loop](#human-in-the-loop)
 - [Production Agent Patterns](#production-agent-patterns)
+
+**Reference**
+- [Common Pitfalls](#common-pitfalls)
+- [Cheat Sheet](#cheat-sheet)
+- [Interview Questions](#interview-questions)
+- [Further Reading](#further-reading)
 
 ---
 
@@ -178,18 +202,24 @@ def run_agent(user_message: str, tools: list, tool_executor: dict,
     for i in range(max_iterations):
         response = client.messages.create(
             model="claude-sonnet-5",
-            max_tokens=4096,
-            system=system,
+            max_tokens=16000,
             tools=tools,
-            messages=messages
+            messages=messages,
+            **({"system": system} if system else {}),   # omit an empty system prompt
         )
 
         # Agent is done
         if response.stop_reason == "end_turn":
-            for block in response.content:
-                if hasattr(block, "text"):
-                    return block.text
-            return ""
+            return next((b.text for b in response.content if b.type == "text"), "")
+
+        # Server paused a long turn — send the conversation back to let it continue
+        if response.stop_reason == "pause_turn":
+            messages.append({"role": "assistant", "content": response.content})
+            continue
+
+        # Anything else (max_tokens, refusal, ...) — stop instead of re-sending the same request
+        if response.stop_reason != "tool_use":
+            raise RuntimeError(f"Agent stopped early: stop_reason={response.stop_reason}")
 
         # Agent wants to use tools
         if response.stop_reason == "tool_use":
@@ -202,21 +232,23 @@ def run_agent(user_message: str, tools: list, tool_executor: dict,
 
                 print(f"[Tool call] {block.name}({json.dumps(block.input)})")
 
+                is_error = False
                 if block.name in tool_executor:
                     try:
                         result = tool_executor[block.name](**block.input)
                         result_str = json.dumps(result) if isinstance(result, dict) else str(result)
                         print(f"[Tool result] {result_str[:200]}")
                     except Exception as e:
-                        result_str = f"ERROR: {str(e)}"
+                        result_str, is_error = f"ERROR: {e}", True
                         print(f"[Tool error] {result_str}")
                 else:
-                    result_str = f"ERROR: Tool '{block.name}' not available"
+                    result_str, is_error = f"ERROR: Tool '{block.name}' not available", True
 
                 tool_results.append({
                     "type":        "tool_result",
                     "tool_use_id": block.id,
-                    "content":     result_str
+                    "content":     result_str,
+                    "is_error":    is_error,      # lets the model know the call failed
                 })
 
             messages.append({"role": "user", "content": tool_results})
@@ -473,17 +505,22 @@ orchestrator_result = run_agent(
 Agents are stateless by default — each call starts fresh. Add memory explicitly.
 
 ```python
-from collections import deque
-
 class AgentWithMemory:
     def __init__(self, tools, tool_executor, system, max_history=20):
         self.tools         = tools
         self.tool_executor = tool_executor
         self.system        = system
-        self.history       = deque(maxlen=max_history)  # rolling window
+        self.max_history   = max_history
+        self.history       = []
+
+    def _trim(self):
+        # Rolling window — but the conversation must always start with a user turn
+        while len(self.history) > self.max_history or (self.history and self.history[0]["role"] != "user"):
+            self.history.pop(0)
 
     def chat(self, user_message: str) -> str:
         self.history.append({"role": "user", "content": user_message})
+        self._trim()
         messages = list(self.history)
 
         # Run agent with full history
@@ -577,6 +614,110 @@ FINAL_ANSWER_TOOL = {
 # Force a structured output even from a free-form agent
 # The agent uses its tools then calls final_answer with the structured result
 ```
+
+---
+
+## Common Pitfalls
+
+| Pitfall | Symptom | Fix |
+|---------|---------|-----|
+| Building an agent where a fixed workflow would do | Slow, expensive, unpredictable results | Start with single calls or chained steps; use an agent only for open-ended tasks |
+| Loop handles only `end_turn` and `tool_use` | Infinite retries on `max_tokens`, `pause_turn`, or `refusal` | Handle every `stop_reason` explicitly, or use the SDK's tool runner |
+| Vague tool names and descriptions | Wrong tool chosen, malformed arguments | Clear names, descriptions that say *when* to use the tool, strict input schemas, examples in descriptions |
+| Too many overlapping tools | The model gets confused and calls the wrong one | A small, orthogonal toolset; tool search for large catalogs |
+| Tools that return huge payloads | Context fills up; cost soars; quality drops | Paginate, summarize, and cap tool outputs; return IDs and let the agent fetch details |
+| Raising exceptions out of tools | The whole run crashes on one bad query | Return errors as `tool_result` with `is_error: true` and a helpful message |
+| Write-capable tools with no guardrails | An agent drops a table or emails a customer | Read-only by default, least-privilege credentials, human approval for destructive actions |
+| No budget limits | A runaway loop burns hundreds of dollars | Caps on iterations, tokens, cost, and wall-clock time |
+| Trusting tool output as instructions | Prompt injection from web pages, tickets, or documents | Treat tool results as data; restrict what a single run can do |
+| No traces | Impossible to debug why the agent did something | Log every step: prompt, tool call, arguments, result, tokens, latency |
+
+---
+
+## Cheat Sheet
+
+**Manual loop skeleton (Claude)**
+
+```python
+messages = [{"role": "user", "content": task}]
+while True:
+    r = client.messages.create(model="claude-sonnet-5", max_tokens=16000, tools=tools, messages=messages)
+    messages.append({"role": "assistant", "content": r.content})       # keep all blocks
+    if r.stop_reason == "end_turn":
+        break
+    if r.stop_reason == "pause_turn":
+        continue
+    if r.stop_reason != "tool_use":
+        raise RuntimeError(r.stop_reason)
+    results = [{"type": "tool_result", "tool_use_id": b.id, "content": run_tool(b.name, b.input)}
+               for b in r.content if b.type == "tool_use"]
+    messages.append({"role": "user", "content": results})               # all results in ONE message
+```
+
+**Or let the SDK run the loop (Tool Runner)**
+
+```python
+from anthropic import beta_tool
+
+@beta_tool
+def get_table_freshness(table: str) -> str:
+    """Return the last load time for a warehouse table.
+
+    Args:
+        table: Fully qualified table name, e.g. analytics.marts.fct_orders.
+    """
+    ...
+
+runner = client.beta.messages.tool_runner(
+    model="claude-sonnet-5", max_tokens=16000,
+    tools=[get_table_freshness],
+    messages=[{"role": "user", "content": "Is fct_orders fresh?"}],
+)
+for message in runner:        # one message per turn; stops when Claude is done
+    print(message)
+```
+
+| Pattern | Use when |
+|---------|----------|
+| Single call with tools | One lookup, then answer |
+| Workflow (fixed chain / routing / parallel calls) | Steps are known in advance |
+| Agent loop | Steps depend on what's discovered along the way |
+| Orchestrator + sub-agents | Broad tasks that split into independent parts (each sub-agent gets its own context) |
+| Human in the loop | Irreversible, costly, or customer-facing actions |
+
+**Tool definition checklist:** verb-noun name (`get_dag_runs`) · a description of *when* to use it · a strict JSON schema · small, structured output · actionable error messages · idempotent where possible
+
+**Where the loop runs:** your own loop or the SDK tool runner (you host it) · the Claude Agent SDK (the Claude Code harness as a library, with built-in file and shell tools) · Claude Managed Agents (Anthropic hosts the loop and a sandbox) · frameworks like LangGraph
+
+---
+
+## Interview Questions
+
+**Q: What is the difference between an LLM workflow and an agent?**
+A: In a workflow, your code defines the steps — call the model to classify, then to extract, then to summarize — and the model fills in each step. In an agent, the model decides the steps itself, choosing which tools to call and when to stop, based on results as it goes. Workflows are more predictable, cheaper, and easier to test; agents handle open-ended tasks where the path can't be known up front. Start with the simplest option that works.
+
+**Q: How does tool calling actually work under the hood?**
+A: You send tool definitions (name, description, JSON schema) with the request. When the model wants a tool, it stops with `stop_reason: "tool_use"` and returns a `tool_use` block with an ID and arguments. Your code runs the function and sends back a `tool_result` block with the same ID in the next user message. The model then continues. It never executes code itself — it only proposes calls, so your code controls permissions and side effects.
+
+**Q: How do you keep an agent safe when it can modify production systems?**
+A: Defense in depth: give tools least-privilege credentials (read-only unless writes are essential); make destructive tools require human approval; validate arguments in code (allow-listed tables, `LIMIT` on queries, dry-run modes); cap iterations, tokens, cost, and time; treat all tool output as untrusted data (prompt injection); and log every action for audit. Test against adversarial scenarios before giving it more autonomy.
+
+**Q: How do you evaluate an agent?**
+A: At two levels. Outcome: does it complete realistic tasks correctly? Build a task suite with verifiable end states (the right answer, the right rows changed) and measure success rate, cost, and steps taken. Trajectory: are the intermediate steps sensible — right tools, valid arguments, no wasted or dangerous calls? Review traces, use LLM graders for qualitative checks, and re-run the suite on every prompt, tool, or model change. Agent runs vary, so run each task several times.
+
+**Q: How do agents manage context over long tasks?**
+A: The conversation grows with every tool call and result, so long tasks can hit context limits and get slower and pricier. Techniques: keep tool outputs small, clear old tool results that are no longer needed (context editing), summarize earlier history (compaction), persist notes to external memory (files or a store the agent reads back), and delegate sub-tasks to sub-agents so each has a clean context and returns only a summary.
+
+---
+
+## Further Reading
+
+- [Anthropic: Building effective agents](https://www.anthropic.com/engineering/building-effective-agents) — workflows vs agents, and common patterns
+- [Claude tool use documentation](https://docs.claude.com/en/docs/agents-and-tools/tool-use/overview)
+- [Anthropic: Writing effective tools for agents](https://www.anthropic.com/engineering/writing-tools-for-agents)
+- [Model Context Protocol](https://modelcontextprotocol.io/) — the open standard for connecting tools and data sources to agents
+- [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk/overview)
+- *ReAct: Synergizing Reasoning and Acting in Language Models* — Yao et al., 2022
 
 ---
 
