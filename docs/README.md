@@ -45,6 +45,21 @@ Each guide follows a **Basic → Intermediate → Advanced** progression with re
 |-------|------------------|
 | [Data Quality](data-quality.md) | SQL checks, Great Expectations, dbt tests, anomaly detection, data contracts, alerting |
 
+### AI & Machine Learning
+
+| Guide | What you'll learn |
+|-------|------------------|
+| [Prompt Engineering](prompt-engineering.md) | Zero-shot, few-shot, CoT, structured output, chaining, versioning |
+| [LLM APIs & SDKs](llm-apis.md) | Anthropic Claude & OpenAI — streaming, tool use, vision, caching, batching |
+| [Embeddings](embeddings.md) | Generating embeddings, cosine similarity, chunking, semantic search, clustering |
+| [RAG](rag.md) | Build retrieval-augmented generation pipelines, hybrid search, re-ranking, evaluation |
+| [Vector Databases](vector-databases.md) | pgvector, Pinecone, Chroma, Weaviate — indexing, filtering, multi-tenancy |
+| [AI Agents & Tool Use](ai-agents.md) | Agentic loops, tool definitions, ReAct, multi-agent systems, human-in-the-loop |
+| [LangChain & LlamaIndex](langchain-llamaindex.md) | RAG chains, agents, LCEL, custom retrievers, LangSmith tracing |
+| [Eval & Evals](eval-and-evals.md) | Unit tests for LLMs, LLM-as-judge, RAGAS, regression testing, eval-driven development |
+| [MLflow](mlflow.md) | Experiment tracking, model registry, serving, custom models, DE integration |
+| [Claude Code](claude-code.md) | CLI setup, CLAUDE.md, MCP servers, hooks, skills, CI/headless mode, DE workflows |
+
 ### Conceptual
 
 | Guide | What you'll learn |
@@ -89,6 +104,19 @@ Each guide follows a **Basic → Intermediate → Advanced** progression with re
 4. [Databricks](databricks-reference.md) — Auto Loader and DLT sections
 5. [Data Quality](data-quality.md) — DQ in streaming pipelines
 
+### Path 5: AI & LLM engineering
+
+1. [Prompt Engineering](prompt-engineering.md) — foundation for everything
+2. [LLM APIs & SDKs](llm-apis.md) — hands-on from day 1
+3. [Embeddings](embeddings.md) — prerequisite for RAG
+4. [RAG](rag.md) — most in-demand AI skill right now
+5. [Vector Databases](vector-databases.md) — implement RAG at scale
+6. [AI Agents & Tool Use](ai-agents.md) — where the field is heading
+7. [LangChain & LlamaIndex](langchain-llamaindex.md) — practical orchestration
+8. [Eval & Evals](eval-and-evals.md) — measure and improve quality
+9. [MLflow](mlflow.md) — bring it back to the data pipeline
+10. [Claude Code](claude-code.md) — use AI to build AI things
+
 ---
 
 ## Quick Reference
@@ -105,6 +133,10 @@ Each guide follows a **Basic → Intermediate → Advanced** progression with re
 | Containerized pipeline | Docker Compose |
 | CI/CD for transformations | dbt + GitHub Actions |
 | Data quality enforcement | dbt tests + Great Expectations |
+| Build an LLM app on private data | RAG + vector DB |
+| LLM with external actions | AI agents + tool use |
+| Measure LLM app quality | Evals + LLM-as-judge |
+| Track ML experiments | MLflow |
 
 ### File format cheat sheet
 
@@ -170,6 +202,7 @@ ELT is dominant today because cloud warehouses are cheap and powerful enough to 
 
 ## Resources
 
+**Data Engineering**
 - [dbt Documentation](https://docs.getdbt.com)
 - [Apache Airflow Documentation](https://airflow.apache.org/docs/)
 - [Apache Kafka Documentation](https://kafka.apache.org/documentation/)
@@ -177,3 +210,12 @@ ELT is dominant today because cloud warehouses are cheap and powerful enough to 
 - [Snowflake Documentation](https://docs.snowflake.com)
 - [PySpark API Reference](https://spark.apache.org/docs/latest/api/python/)
 - [Great Expectations Documentation](https://docs.greatexpectations.io)
+
+**AI & LLMs**
+- [Anthropic API Documentation](https://docs.anthropic.com)
+- [OpenAI API Documentation](https://platform.openai.com/docs)
+- [LangChain Documentation](https://python.langchain.com)
+- [LlamaIndex Documentation](https://docs.llamaindex.ai)
+- [MLflow Documentation](https://mlflow.org/docs/latest)
+- [RAGAS Documentation](https://docs.ragas.io)
+- [Voyage AI (Embeddings)](https://docs.voyageai.com)
