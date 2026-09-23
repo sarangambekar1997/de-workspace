@@ -79,3 +79,8 @@ Thumbs.db
 # VS Code
 # =========================
 .vscode/
+
+# =========================
+# Documentation site build output
+# =========================
+site/
