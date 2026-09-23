@@ -7,11 +7,11 @@
 
 ---
 
-## Plain English: What Is MLflow?
+## Overview
 
-**The problem:** Machine learning work produces a mess of experiments: dozens of training runs with different parameters, data versions, and results, scattered across notebooks and laptops. Three weeks later nobody can say which run produced the model in production, what data it was trained on, or how to reproduce it.
+**Challenge:** Machine learning work produces many experiments — training runs with different parameters, data versions, and results — spread across notebooks and machines. Without tracking, it becomes impossible to say which run produced the production model, what data it used, or how to reproduce it.
 
-**MLflow is the fix:** an open-source "system of record" for ML and LLM work. It records every run (parameters, metrics, code version, artifacts), stores trained models in a standard format, keeps a *registry* of model versions with aliases like `@champion`, and can serve models as REST endpoints. Newer versions also trace LLM calls and evaluate GenAI applications.
+**Solution:** MLflow is an open-source system of record for ML and LLM work. It records every run (parameters, metrics, code version, artifacts), stores models in a standard format, maintains a *registry* of model versions with aliases such as `@champion`, and serves models as REST endpoints. Recent versions also trace LLM calls and evaluate GenAI applications.
 
 ```
 train/eval runs ──log──→ Tracking server (params · metrics · artifacts · traces)
@@ -23,7 +23,7 @@ train/eval runs ──log──→ Tracking server (params · metrics · artifac
                   batch scoring job · REST endpoint · Spark UDF · Databricks serving
 ```
 
-**Why data engineers meet it:** you'll run the tracking server, wire model scoring into pipelines (load `@champion`, score yesterday's partition), log data versions alongside models for lineage, and trigger retraining when data drifts.
+**Relevance to data engineering:** data engineers typically operate the tracking server, integrate model scoring into pipelines (load `@champion`, score the latest partition), record data versions alongside models for lineage, and trigger retraining when data drifts.
 
 ---
 

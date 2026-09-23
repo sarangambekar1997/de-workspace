@@ -7,13 +7,11 @@
 
 ---
 
-## Plain English
+## Overview
 
-**What is AI observability?**
+**Challenge:** When a traditional API misbehaves, logs of inputs, outputs, and error codes are usually enough to diagnose it. LLM systems are harder to operate: outputs are probabilistic, cost varies with token usage, latency is variable, and quality can degrade without producing any error.
 
-When a traditional API returns a wrong answer, you check the logs: what was the input, what was the output, what error code. With LLMs it's harder — outputs are probabilistic, costs vary by token count, latency spikes randomly, and quality degrades in ways that don't look like errors.
-
-AI observability is the practice of **systematically tracking what your LLM system does** so you can debug failures, catch regressions, and optimize cost and speed.
+**Solution:** AI observability is the practice of **systematically recording what an LLM system does** — every call, its inputs and outputs, token usage, latency, and quality scores — so failures can be debugged, regressions detected, and cost and speed optimized.
 
 ```
 Traditional API monitoring:     AI observability adds:

@@ -7,11 +7,11 @@
 
 ---
 
-## Plain English: Why Does a Data Engineer Need the Command Line?
+## Overview
 
-**The problem:** Almost everything a pipeline touches runs on Linux — Airflow workers, Spark clusters, Docker containers, CI runners, EC2 boxes. None of them have a GUI. When a job fails at 3am, you're SSH'd into a server reading logs, not clicking through a file browser.
+**Challenge:** Nearly every component of a data platform runs on Linux — orchestrator workers, Spark clusters, containers, CI runners, and cloud virtual machines. These environments have no graphical interface, so investigating a failed job means working in a terminal: reading logs, inspecting files, and checking processes.
 
-**The shell is the fix:** Bash lets you inspect files, chain small tools together, and automate anything you'd otherwise do by hand. A few commands piped together can answer "how many rows failed yesterday?" in seconds, without writing a Python script.
+**Solution:** The shell provides small, composable tools for inspecting files, filtering text, and automating repetitive tasks. A short pipeline of commands can answer an operational question — such as how many records failed in yesterday's run — in seconds, without writing a program.
 
 ```
 The Unix idea: small tools, each doing one thing, connected by pipes
@@ -20,7 +20,7 @@ The Unix idea: small tools, each doing one thing, connected by pipes
   read file       keep errors    pick 4th field    group    count       rank          top 10
 ```
 
-**What you'll actually use it for:** peeking at a 10 GB CSV without opening it, tailing a failing job's log, moving files to and from S3, writing a wrapper script with retries, and scheduling it with cron (until you move it to Airflow).
+**Typical uses:** previewing large files without loading them, following the log of a running job, transferring files to and from object storage, writing wrapper scripts with retries, and scheduling simple jobs with cron.
 
 ---
 

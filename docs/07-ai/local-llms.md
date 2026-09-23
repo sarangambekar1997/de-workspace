@@ -7,13 +7,11 @@
 
 ---
 
-## Plain English
+## Overview
 
-**Why run an LLM locally?**
+**Challenge:** Hosted LLM APIs require sending data to a third-party provider. For some workloads — internal logs, proprietary schemas, personal data — policy or regulation does not allow this.
 
-Cloud LLMs (Claude, GPT-4) are powerful but require sending your data to Anthropic/OpenAI servers. For many data engineering use cases — parsing internal logs, generating SQL from proprietary schemas, processing PII — that's not allowed.
-
-Local LLMs run entirely on your machine or your company's servers. Your data never leaves.
+**Solution:** open-weight models can run entirely on a local machine or on company-controlled servers, so data never leaves the organization's infrastructure.
 
 ```
 Cloud LLM:            your data → Anthropic/OpenAI API → response

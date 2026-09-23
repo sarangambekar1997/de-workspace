@@ -7,11 +7,11 @@
 
 ---
 
-## Plain English: What Is an AI Agent?
+## Overview
 
-**The problem:** A plain LLM call is a single question and a single answer. It can't look anything up, check whether its SQL actually runs, or take the next step based on what it found. For "why is the orders dashboard wrong today?", a human would check freshness, look at the DAG run, query the table, and compare with the source — several steps, each depending on the last.
+**Challenge:** A single LLM call produces a single response. It cannot look anything up, verify that generated SQL runs, or decide on a next step based on what it finds. Investigating a question such as "why is today's orders report wrong?" requires several dependent steps: checking freshness, reviewing the latest pipeline run, querying the table, and comparing it with the source.
 
-**An agent is the fix:** you give the model *tools* (functions it may ask you to run — `run_sql`, `get_dag_status`, `search_docs`) and let it work in a loop: decide on the next action, you execute it, it reads the result, and it decides again — until it can answer.
+**Solution:** an agent gives the model *tools* — functions it can request, such as `run_sql`, `get_pipeline_status`, or `search_docs` — and runs in a loop: the model chooses an action, the application executes it, the model reads the result, and the cycle repeats until the task is complete.
 
 ```
 goal ──→ model: "check freshness first"  ──→ run tool: get_table_freshness("fct_orders")
@@ -21,7 +21,7 @@ goal ──→ model: "check freshness first"  ──→ run tool: get_table_fre
          model: "Answer: yesterday's load failed at load_to_snowflake; data is 26h stale."
 ```
 
-**The design rule:** use the *least* autonomy that solves the problem. A fixed pipeline of LLM calls (a workflow) is cheaper, faster, and easier to test than an agent. Reach for an agent when the steps genuinely can't be known in advance — and then invest in guardrails: limited tools, budgets, approvals, and logging.
+**Design principle:** use the *least* autonomy that solves the problem. A fixed sequence of LLM calls (a workflow) is cheaper, faster, and easier to test than an agent. Agents are appropriate when the steps cannot be known in advance, and they require guardrails: limited tools, budgets, approvals, and logging.
 
 ---
 
@@ -561,7 +561,7 @@ DESTRUCTIVE_TOOLS = {"delete_table", "truncate_table", "run_write_sql", "deploy_
 
 def tool_executor_with_approval(tool_name: str, tool_fn, **kwargs) -> str:
     if tool_name in DESTRUCTIVE_TOOLS:
-        print(f"\n⚠️  Agent wants to call: {tool_name}")
+        print(f"\n[Approval required] Agent wants to call: {tool_name}")
         print(f"   Arguments: {json.dumps(kwargs, indent=2)}")
         confirm = input("   Approve? (yes/no): ").strip().lower()
         if confirm != "yes":

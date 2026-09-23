@@ -7,11 +7,11 @@
 
 ---
 
-## Plain English: What Are LangChain and LlamaIndex?
+## Overview
 
-**The problem:** Building an LLM application involves the same plumbing again and again: loading PDFs and web pages, splitting them into chunks, calling an embedding model, writing to a vector store, retrieving, formatting prompts, calling the model, parsing the output, and tracing it all. Writing that from scratch for every project is slow — and switching from one model provider or vector database to another means rewriting it.
+**Challenge:** LLM applications repeat the same integration work: loading documents, splitting them into chunks, embedding, writing to a vector store, retrieving, formatting prompts, calling the model, parsing output, and tracing. Building this from scratch for every project is slow, and changing model provider or vector database requires rewriting it.
 
-**These frameworks are the fix:** libraries of ready-made, swappable building blocks.
+**Solution:** these frameworks provide ready-made, interchangeable building blocks.
 - **LangChain** focuses on composing steps — models, prompts, tools, and retrievers — into chains and agents (its LangGraph library handles stateful, multi-step agents).
 - **LlamaIndex** focuses on *data*: ingesting documents, building indexes, and advanced retrieval for question-answering over your content.
 
@@ -21,7 +21,7 @@
             └─────────── all interchangeable ──────────┘       (framework glue + tracing)
 ```
 
-**The trade-off:** you move faster at first and can swap components easily, but you take on extra abstraction layers, frequent API changes, and harder debugging. Many teams prototype with a framework and keep it only where it clearly saves effort.
+**Trade-offs:** frameworks speed up initial development and make components interchangeable, at the cost of additional abstraction, frequent API changes, and harder debugging. Many teams prototype with a framework and retain it only where it clearly saves effort.
 
 ---
 
@@ -533,22 +533,22 @@ results = evaluate(
 
 ```
 Use the raw SDK when:
-  ✓ Simple use case (single LLM call, basic RAG)
-  ✓ Production code where you need full control
-  ✓ You're optimizing for latency or cost
-  ✓ Your team doesn't already know the framework
+  - Simple use case (single LLM call, basic RAG)
+  - Production code where you need full control
+  - You're optimizing for latency or cost
+  - Your team doesn't already know the framework
 
 Use LangChain when:
-  ✓ Building complex agent workflows
-  ✓ Need to swap LLM providers easily
-  ✓ Want built-in streaming, retries, fallbacks
-  ✓ Already using LangSmith for tracing
+  - Building complex agent workflows
+  - Need to swap LLM providers easily
+  - Want built-in streaming, retries, fallbacks
+  - Already using LangSmith for tracing
 
 Use LlamaIndex when:
-  ✓ Building document Q&A or knowledge base
-  ✓ Need advanced retrieval (sub-question, HyDE, re-ranking)
-  ✓ Working with large document collections
-  ✓ Want higher-level RAG abstractions out of the box
+  - Building document Q&A or knowledge base
+  - Need advanced retrieval (sub-question, HyDE, re-ranking)
+  - Working with large document collections
+  - Want higher-level RAG abstractions out of the box
 ```
 
 ---

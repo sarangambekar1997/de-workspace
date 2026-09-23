@@ -7,11 +7,11 @@
 
 ---
 
-## Plain English: What Is Docker and Why Do Data Engineers Use It?
+## Overview
 
-**The problem:** Your pipeline needs Python 3.11, a specific pyarrow version, a Java runtime for Spark, and the Snowflake driver. It works on your laptop, fails on a teammate's, and breaks again on the production server where someone upgraded a library last week.
+**Challenge:** A pipeline depends on a specific Python version, pinned libraries, a Java runtime for Spark, and database drivers. Differences between developer machines, CI, and production servers cause failures that are hard to reproduce.
 
-**Docker is the fix:** you describe the whole environment in a `Dockerfile`, build it into an **image**, and run that image as a **container** anywhere — your laptop, CI, Kubernetes, AWS Batch, Airflow's KubernetesPodOperator. The same image runs everywhere, so "works on my machine" becomes "works on every machine".
+**Solution:** Docker packages the complete environment, described in a `Dockerfile`, into an immutable **image** that runs as a **container** anywhere — a laptop, CI, Kubernetes, or a managed batch service. The same image runs identically in every environment.
 
 ```
 Dockerfile  ──build──→  Image (versioned, immutable)  ──push──→  Registry (ECR / GHCR / Docker Hub)
@@ -20,7 +20,7 @@ Dockerfile  ──build──→  Image (versioned, immutable)  ──push──
                                                           laptop · CI · Kubernetes · Airflow
 ```
 
-**Where you'll meet it as a data engineer:** running Airflow, Postgres, Kafka, or Spark locally with Docker Compose; packaging a pipeline job so the orchestrator can run it in isolation; and building reproducible CI environments for dbt or Spark tests.
+**Typical uses in data engineering:** running an orchestrator, database, message broker, or Spark locally with Docker Compose; packaging pipeline jobs so the orchestrator can run them in isolation; and building reproducible CI environments for transformation and Spark tests.
 
 ---
 
@@ -535,24 +535,24 @@ docker compose -f docker-compose.airflow.yml up -d
 ## Best Practices
 
 ```dockerfile
-# ✅ Pin base image versions
+# Recommended: Pin base image versions
 FROM python:3.11.7-slim-bookworm   # good
 FROM python:latest                  # bad
 
-# ✅ Use slim or alpine variants
+# Recommended: Use slim or alpine variants
 FROM python:3.11-slim   # ~50 MB
 FROM python:3.11        # ~350 MB
 FROM python:3.11-alpine # ~20 MB (but may have glibc compatibility issues)
 
-# ✅ One process per container
+# Recommended: One process per container
 # Don't run both a web server and a background worker in one container
 # Use separate services in docker-compose instead
 
-# ✅ Non-root user
+# Recommended: Non-root user
 RUN useradd -m -u 1000 appuser
 USER appuser
 
-# ✅ .dockerignore — exclude files from build context
+# Recommended: .dockerignore — exclude files from build context
 ```
 
 ```text
@@ -574,7 +574,7 @@ tests
 ```
 
 ```dockerfile
-# ✅ Minimize layers — combine related RUN commands
+# Recommended: Minimize layers — combine related RUN commands
 # Bad
 RUN apt-get update
 RUN apt-get install -y curl wget
@@ -586,12 +586,12 @@ RUN apt-get update \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# ✅ COPY only what's needed — not COPY . . blindly
+# Recommended: COPY only what's needed — not COPY . . blindly
 COPY requirements.txt .
 COPY src/ ./src/
 COPY config/ ./config/
 
-# ✅ Use healthchecks
+# Recommended: Use healthchecks
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 ```

@@ -7,23 +7,23 @@
 
 ---
 
-## Plain English: What Is Prompt Engineering?
+## Overview
 
-**The problem:** An LLM will answer almost anything you type — but vague input gets vague, inconsistent output. "Summarize this table" might give you three sentences today and a bulleted essay tomorrow, invent a column that doesn't exist, or wrap the JSON you needed in friendly prose that breaks your parser.
+**Challenge:** Vague instructions produce vague, inconsistent output. "Summarize this table" may yield three sentences in one run and a long bulleted list in the next, reference columns that do not exist, or surround the required JSON with prose that breaks the parser.
 
-**Prompt engineering is the fix:** writing instructions the way you'd brief a smart new colleague who knows nothing about your context — what the task is, what inputs they have, what "good" looks like, what format to return, and what to do when they're unsure. Then *testing* those instructions on real examples, like you'd test code.
+**Solution:** prompt engineering means writing instructions as you would brief a capable colleague with no context — the task, the inputs, the success criteria, the output format, and what to do when uncertain — and then *testing* those instructions on real examples, as you would test code.
 
 ```
 Weak prompt                             Strong prompt
 ───────────                             ─────────────
-"Summarize this."                       Role/context:  "You summarize dbt model changes for analysts."
+"Summarize this."                       Role/context:  "You summarize data pipeline changes for analysts."
                                         Task:          "Explain what changed and who is affected."
                                         Input:         <diff>...</diff>
                                         Format:        "2 sentences, then a bullet list of affected tables."
                                         Guardrail:     "If the diff is unclear, say what's missing."
 ```
 
-**For data engineers** this shows up everywhere LLMs touch a pipeline: extracting fields from messy text, classifying tickets, generating SQL, summarizing incidents. The same rules as any pipeline apply — deterministic formats, validation, and regression tests.
+**Relevance to data engineering:** This shows up everywhere LLMs touch a pipeline: extracting fields from messy text, classifying tickets, generating SQL, summarizing incidents. The same rules as any pipeline apply — deterministic formats, validation, and regression tests.
 
 ---
 

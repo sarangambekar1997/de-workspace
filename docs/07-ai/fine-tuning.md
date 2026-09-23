@@ -7,13 +7,11 @@
 
 ---
 
-## Plain English
+## Overview
 
-**What is fine-tuning?**
+**Challenge:** A pre-trained LLM has broad general knowledge but no knowledge of an organization's tone, domain terminology, or required output formats.
 
-A pre-trained LLM (like Claude or GPT-4) learned from the entire internet. It knows a lot, but it doesn't know *your* company's tone, *your* specific domain jargon, or *your* exact output format.
-
-Fine-tuning is like giving the model extra training on examples specific to your use case. You show it hundreds or thousands of (input, ideal output) pairs, and the model adjusts its weights to produce outputs closer to those examples.
+**Solution:** fine-tuning continues training the model on examples specific to the use case. Given hundreds or thousands of (input, ideal output) pairs, the model adjusts its weights to produce outputs closer to those examples.
 
 ```
 Pre-trained model:       Knows everything generally
@@ -27,23 +25,23 @@ Examples of what fine-tuning fixes:
   "Classify support tickets into our 40 internal categories"
 ```
 
-**Fine-tuning vs RAG — when to use which:**
+**Fine-tuning compared with RAG:**
 
 ```
 Use RAG when:
-  ✓ Your knowledge base changes frequently
-  ✓ You need source citations
-  ✓ You want to add new facts the model doesn't know
+  - Your knowledge base changes frequently
+  - You need source citations
+  - You want to add new facts the model doesn't know
 
 Use fine-tuning when:
-  ✓ You need a consistent output format the model ignores in prompts
-  ✓ You need a specific tone or style the model doesn't adopt
-  ✓ You're classifying into custom categories not in the base model
-  ✓ You need faster inference (smaller fine-tuned model > larger base model)
-  ✓ RAG works but the model still doesn't follow instructions reliably
+  - You need a consistent output format the model ignores in prompts
+  - You need a specific tone or style the model doesn't adopt
+  - You're classifying into custom categories not in the base model
+  - You need faster inference (smaller fine-tuned model > larger base model)
+  - RAG works but the model still doesn't follow instructions reliably
 
 Use both when:
-  ✓ Fine-tune for behavior/format, RAG for knowledge
+  - Fine-tune for behavior/format, RAG for knowledge
 ```
 
 ---
@@ -75,7 +73,7 @@ Use both when:
 
 ## Core Concepts
 
-| Concept | Plain English |
+| Concept | Description |
 |---------|--------------|
 | **Full fine-tuning** | Update all model weights — most powerful, most expensive, requires A100/H100 GPUs |
 | **LoRA** | Update only a tiny fraction of weights via low-rank matrices — 10-100x cheaper, nearly as good |

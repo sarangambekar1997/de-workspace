@@ -7,19 +7,19 @@
 
 ---
 
-## Plain English: What Are Evals?
+## Overview
 
-**The problem:** You change a prompt, swap a model, or tweak chunking, and the answers *feel* better on the three examples you tried. But did it break something else? With normal code, unit tests tell you. LLM outputs vary from run to run and are often open-ended, so `assert output == expected` doesn't work — and "it looked fine" is how regressions reach production.
+**Challenge:** A prompt, model, or retrieval change may look better on a handful of examples while silently degrading others. Conventional unit tests do not apply directly: LLM outputs vary between runs and are often open-ended, so `assert output == expected` is not a meaningful check.
 
-**Evals are the fix:** a fixed set of realistic test inputs plus a way to *score* the outputs — exact checks where possible, code-based checks (valid JSON? SQL runs?), a second LLM grading against a rubric, or human review. Run the eval set on every change and compare scores, like a test suite that reports a percentage instead of pass/fail.
+**Solution:** an evaluation ("eval") combines a fixed set of realistic inputs with a method for *scoring* outputs — exact checks where possible, programmatic checks (valid JSON, executable SQL), an LLM grader applying a rubric, or human review. The eval runs on every change, and scores are compared, much like a test suite that reports a rate rather than pass/fail.
 
 ```
 eval set (inputs + expectations)  ──→  your LLM app (version A / B)  ──→  graders  ──→  scores
   150 real questions, edge cases           prompt v7, claude-sonnet-5         code checks      A: 86%
-  known failures from production           prompt v8, claude-sonnet-5         LLM judge        B: 91%  ✓ ship
+  known failures from production           prompt v8, claude-sonnet-5         LLM judge        B: 91%  (ship)
 ```
 
-**For data engineers** this should feel familiar: it's data quality testing for model outputs — versioned test data, automated checks, thresholds, and a CI gate.
+**Relevance to data engineering:** evals apply data quality practices to model outputs — versioned test data, automated checks, thresholds, and a CI gate.
 
 ---
 

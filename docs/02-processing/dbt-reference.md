@@ -7,11 +7,11 @@
 
 ---
 
-## Plain English: What Is dbt?
+## Overview
 
-**dbt (data build tool) does one thing: run SQL SELECT statements and turn them into tables or views in your warehouse.**
+**Purpose:** dbt (data build tool) runs SQL `SELECT` statements and materializes the results as tables or views in your warehouse.
 
-That's it. But it wraps that simple idea with everything you need to build a maintainable transformation layer:
+Around that core idea, it provides what a maintainable transformation layer needs:
 
 ```
 Without dbt:                          With dbt:
@@ -22,13 +22,13 @@ Without dbt:                          With dbt:
   - No versioning                       - Git-native, PR-reviewable SQL
   - Copy-paste table references         - ref('model_name') auto-resolves dependencies
 
-Analogy: dbt is to SQL transformations what Airflow is to pipeline scheduling.
+In short: dbt manages SQL transformations the way an orchestrator manages pipeline scheduling.
 ```
 
-**What dbt does NOT do:**
-- Move data from source systems to the warehouse → that's a loader (Fivetran, Airbyte, custom pipelines)
-- Schedule itself → that's Airflow, Prefect, or dbt Cloud's scheduler
-- Run Python → it's SQL-first (though dbt Python models exist for edge cases)
+**Out of scope for dbt:**
+- Moving data from source systems into the warehouse — handled by ingestion tools or custom pipelines
+- Scheduling — handled by an orchestrator or dbt Cloud's scheduler
+- General-purpose Python processing — dbt is SQL-first (Python models exist for specific cases)
 
 ---
 

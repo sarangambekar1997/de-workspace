@@ -7,11 +7,11 @@
 
 ---
 
-## Plain English: What Is Snowflake and Why Do So Many Teams Use It?
+## Overview
 
-**The problem:** Traditional databases tie storage and compute together on the same servers. When the finance team's month-end report runs, the dashboards slow down for everyone; when data grows, you buy bigger servers whether you need the CPU or not.
+**Challenge:** Traditional databases couple storage and compute on the same servers. Heavy workloads such as month-end reporting slow down every other user, and growing data volumes force larger servers whether or not more compute is needed.
 
-**Snowflake is the fix:** it's a cloud data warehouse that keeps all data in one central store and lets you spin up any number of independent compute clusters ("virtual warehouses") that read it. The ETL jobs get their own warehouse, BI gets another, and data science gets a third — none of them slow each other down, and each one shuts itself off when it's idle, so you stop paying.
+**Solution:** Snowflake is a cloud data warehouse that keeps data in a single central store and runs queries on independent compute clusters ("virtual warehouses"). Loading, transformation, BI, and data science workloads each receive their own compute, do not contend with one another, and suspend automatically when idle.
 
 ```
                  One copy of the data (cloud object storage)
@@ -22,7 +22,7 @@
    pay only while running     pay only while running      scales out when busy
 ```
 
-**What you get on top:** plain SQL (plus handy extensions like `QUALIFY` and `FLATTEN`), native JSON handling, time travel to undo mistakes, instant zero-copy clones for dev environments, and very little tuning — no indexes and no vacuuming.
+**Additional capabilities:** standard SQL with useful extensions (`QUALIFY`, `FLATTEN`), native semi-structured data handling, time travel for recovering from mistakes, zero-copy cloning for development environments, and minimal tuning — no indexes or vacuuming.
 
 ---
 

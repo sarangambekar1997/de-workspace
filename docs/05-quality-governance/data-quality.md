@@ -7,11 +7,11 @@
 
 ---
 
-## Plain English: What Is Data Quality and Whose Job Is It?
+## Overview
 
-**The problem:** Pipelines rarely fail loudly. A source system renames a column, a partner sends half a file, a join starts duplicating rows — and the pipeline still finishes "successfully". The first person to notice is an executive asking why revenue dropped 40% overnight.
+**Challenge:** Data pipelines rarely fail loudly. A source system renames a column, a partner delivers a partial file, or a join begins duplicating rows — and the pipeline still completes successfully. Without checks, the problem is discovered by business users, after decisions have already been made on incorrect data.
 
-**Data quality work is the fix:** you write down what "correct" means for each dataset — no NULL IDs, amounts are positive, yesterday's data arrived by 6am, row counts are in the normal range — and check it *automatically* on every run, stopping or flagging bad data before anyone consumes it.
+**Solution:** define what "correct" means for each dataset — no NULL identifiers, positive amounts, data delivered by an agreed time, row counts within the normal range — and verify it *automatically* on every run, blocking or flagging bad data before it is consumed.
 
 ```
 Source ──→ [contract/schema checks] ──→ Bronze ──→ [validity, uniqueness] ──→ Silver ──→ [business rules, reconciliation] ──→ Gold ──→ BI
@@ -20,7 +20,7 @@ Source ──→ [contract/schema checks] ──→ Bronze ──→ [validity, 
           reject / quarantine                    block the load, alert                     alert owner, mark stale
 ```
 
-**Think of it like unit tests for data:** code tests check logic once, at deploy time. Data tests have to run on every load, because the data changes every day even when the code doesn't.
+**Relation to software testing:** code tests verify logic at deployment time. Data tests must run on every load, because the data changes daily even when the code does not.
 
 ---
 

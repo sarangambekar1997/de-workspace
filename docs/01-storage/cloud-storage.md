@@ -7,11 +7,11 @@
 
 ---
 
-## Plain English: What Is Object Storage and Why Is It the Center of Every Data Platform?
+## Overview
 
-**The problem:** Databases are expensive per gigabyte and don't scale to petabytes of raw logs, events, and exports. Local disks fill up, fail, and can't be shared by a hundred Spark workers at once.
+**Challenge:** Databases are expensive per gigabyte and are not designed to hold petabytes of raw logs, events, and exports. Local disks fill up, fail, and cannot be shared by many compute nodes at once.
 
-**Object storage is the fix:** S3 (AWS), GCS (Google), and ADLS (Azure) store files ("objects") in "buckets" — effectively unlimited, extremely durable, and cheap (a few cents per GB per month). Every engine can read from it: Spark, Snowflake, Databricks, Athena, BigQuery, DuckDB, pandas.
+**Solution:** Object storage services — Amazon S3, Google Cloud Storage, and Azure Data Lake Storage — store files ("objects") in buckets with effectively unlimited capacity, very high durability, and low cost. Virtually every processing engine, warehouse, and query service can read from them.
 
 ```
                     ┌─────────────────────────────┐
@@ -23,7 +23,7 @@
                      scale (and pay for) each independently
 ```
 
-**The catch:** it's not a real filesystem. There are no folders, only key names with `/` in them; renames are copy + delete; and every request costs a little. How you *lay out* files (partitioning, file sizes, formats) decides whether queries take seconds or hours — which is what most of this guide is about.
+**Trade-offs:** Object storage is not a filesystem. Folders are only key prefixes, renames are copy-and-delete operations, and every request has a cost. File layout — partitioning, file sizes, and formats — therefore determines whether queries take seconds or hours, and is the focus of most of this guide.
 
 ---
 

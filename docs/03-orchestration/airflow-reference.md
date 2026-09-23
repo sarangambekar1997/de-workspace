@@ -7,33 +7,33 @@
 
 ---
 
-## Plain English: What Is Airflow and Why Do You Need It?
+## Overview
 
-Imagine you have 10 data tasks that need to run every morning in a specific order:
-1. Download yesterday's sales data from an S3 bucket
-2. Validate the file isn't empty
-3. Load it into a staging table in Snowflake
-4. Run 3 SQL transformations (they can run in parallel)
-5. Send a Slack alert when everything is done
+**Challenge:** A typical daily pipeline consists of dependent steps that must run in order:
+1. Download the previous day's sales data from object storage
+2. Validate that the file is not empty
+3. Load it into a staging table in the warehouse
+4. Run three SQL transformations in parallel
+5. Send a notification when everything completes
 
-You *could* wire this up with cron jobs and shell scripts — but then: what happens if step 2 fails? Does step 3 still run? How do you rerun just the failed step without re-downloading the file? How do you see a history of what ran when and why it failed last Tuesday?
+Cron jobs and shell scripts can run these steps, but they do not answer the operational questions: what happens downstream when step 2 fails, how to rerun only the failed step, and where to find the history of past runs and failures.
 
-**Airflow is a job scheduler that understands dependencies.** You write your pipeline as a Python file called a **DAG** (Directed Acyclic Graph) — a graph of tasks with arrows showing what depends on what. Airflow then:
+**Solution:** Airflow is a workflow orchestrator that understands dependencies. A pipeline is defined in Python as a **DAG** (Directed Acyclic Graph) — tasks connected by dependency edges. Airflow then:
 - Schedules the DAG to run on a timetable (daily, hourly, every 15 minutes)
 - Runs tasks in the right order, in parallel where it can
 - Retries failures automatically
-- Shows you a visual UI with success/failure history for every task of every run
-- Lets you rerun just the failed task (or any task) without redoing the whole pipeline
+- Provides a UI with the status and history of every task in every run
+- Allows individual tasks to be rerun without repeating the whole pipeline
 
-The name "DAG" just means: tasks are connected (graph), with arrows showing direction (directed), and there are no loops — task A can't eventually depend on itself (acyclic).
+"DAG" describes the structure: tasks form a graph, dependencies have a direction, and there are no cycles — no task can depend, directly or indirectly, on itself.
 
-**When Airflow is the right tool:**
+**When to use Airflow:**
 - Multi-step pipelines where step B depends on step A finishing first
 - Daily/hourly batch jobs (ETL, data loads, report generation)
 - Workflows that need human-readable monitoring, retries, and alerting
 - Anything more complex than a single cron job
 
-**When it's overkill:** A single script you run once a week. Use cron instead.
+**When it is unnecessary:** a single, independent script that runs occasionally — a cron job is sufficient.
 
 ---
 
@@ -806,32 +806,32 @@ airflow dags backfill \
 ### DAG design
 
 ```python
-# ✅ Set catchup=False unless you explicitly need backfill
+# Recommended: Set catchup=False unless you explicitly need backfill
 with DAG(..., catchup=False):
     ...
 
-# ✅ Use start_date in the past (a fixed date, not datetime.now())
+# Recommended: Use start_date in the past (a fixed date, not datetime.now())
 start_date=datetime(2024, 1, 1)   # good
 start_date=datetime.now()         # bad — changes every time DAG is parsed
 
-# ✅ Keep DAG files lightweight — no heavy imports at module level
+# Recommended: Keep DAG files lightweight — no heavy imports at module level
 # Heavy imports inside callables, not at the top of the DAG file
 def extract(**context):
     import pandas as pd     # import here, not at top of DAG file
     ...
 
-# ✅ Use default_args for shared task config
+# Recommended: Use default_args for shared task config
 default_args = {
     "retries": 2,
     "retry_delay": timedelta(minutes=5),
     "on_failure_callback": slack_alert,
 }
 
-# ✅ Name task_ids clearly — they appear in logs and UI
+# Recommended: Name task_ids clearly — they appear in logs and UI
 # Bad:  task_id="task1"
 # Good: task_id="extract_orders_from_postgres"
 
-# ✅ Keep tasks atomic — one task does one thing
+# Recommended: Keep tasks atomic — one task does one thing
 # Avoid: one giant Python function that extracts, transforms, and loads
 # Prefer: separate extract, transform, load tasks
 ```

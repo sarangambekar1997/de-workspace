@@ -7,11 +7,11 @@
 
 ---
 
-## Plain English: What Is Git and Why Do Data Engineers Need It?
+## Overview
 
-**The problem:** Pipelines are code — SQL models, DAGs, Spark jobs, Terraform. Without version control you get `fct_orders_v2_final_FIXED.sql`, no idea who changed what, and no way back when a change breaks the 6am load.
+**Challenge:** Data pipelines are code — SQL transformations, orchestration definitions, Spark jobs, and infrastructure configuration. Without version control there is no reliable record of who changed what, no review process, and no safe way to roll back a change that breaks a production load.
 
-**Git is the fix:** It records every change as a snapshot with an author and a reason. You work on a *branch* without touching production, get the change reviewed in a *pull request*, and merge it once CI has run your tests. If it still breaks, you can see exactly which commit did it and revert it in one command.
+**Solution:** Git records every change as a commit with an author, timestamp, and message. Work happens on *branches* isolated from production, changes are reviewed in *pull requests*, and they are merged only after automated tests pass. When a regression does reach production, the responsible commit can be identified and reverted.
 
 ```
 Without Git:                              With Git:
@@ -21,7 +21,7 @@ Without Git:                              With Git:
   copy files to back them up                every version is kept, forever
 ```
 
-**For data engineers specifically**, Git is what CI/CD hangs off: dbt slim CI, Airflow DAG deploys, and Terraform plans all run on a push or a pull request.
+**Relevance to data engineering:** Git is the foundation of CI/CD for data: transformation tests, orchestration deployments, and infrastructure plans all run on a push or a pull request.
 
 ---
 

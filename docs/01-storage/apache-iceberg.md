@@ -7,13 +7,11 @@
 
 ---
 
-## Plain English
+## Overview
 
-**What is Apache Iceberg?**
+**Challenge:** A data lake of Parquet files in object storage has no concept of a table — only files. There is no safe way to update rows, roll back a bad write, or let two jobs write concurrently without corrupting results.
 
-Imagine your data lake is a folder of Parquet files on S3. The problem: there's no "table" — just files. You can't do `UPDATE`, you can't roll back a bad write, and two jobs writing at the same time corrupt each other.
-
-Iceberg is a **table format** that wraps those files with a metadata layer. It tracks which files belong to the table, what schema they have, and what changed when. The files stay on S3 — Iceberg just adds structure on top.
+**Solution:** Apache Iceberg is an open **table format** that adds a metadata layer over those files. It tracks which files belong to the table, their schema, and the history of every change. The data stays in object storage; Iceberg provides transactional table semantics on top.
 
 ```
 Without Iceberg:          With Iceberg:
@@ -24,9 +22,7 @@ s3://bucket/orders/       iceberg table "orders"
   (just files — no table)   (a real table with ACID, history, evolution)
 ```
 
-**Why Iceberg over Delta Lake?**
-- Delta Lake is Databricks-native; Iceberg is truly open — Spark, Flink, Trino, Snowflake, and BigQuery all read it natively
-- Choose Iceberg when your data sits in a multi-engine environment; Delta when you're all-in on Databricks
+**Positioning:** Iceberg is engine-neutral — Spark, Flink, Trino, and major cloud warehouses read and write it natively — which makes it a strong choice when several engines share the same tables. Delta Lake and Apache Hudi solve the same problem with different trade-offs (see the comparison later in this guide).
 
 ---
 
@@ -59,7 +55,7 @@ s3://bucket/orders/       iceberg table "orders"
 
 ## Core Concepts
 
-| Concept | Plain English |
+| Concept | Description |
 |---------|--------------|
 | **Table format** | A specification for how to organize data files and metadata so any engine can read the "table" | 
 | **Snapshot** | A point-in-time version of the table — every write creates a new snapshot |
@@ -208,12 +204,12 @@ spark.sql("ALTER TABLE local.db.orders DROP COLUMN shipping_fee")
 # missing columns automatically
 
 # Schema evolution rules:
-# ✓  Adding columns      — always safe
-# ✓  Dropping columns    — safe (data stays, not visible)
-# ✓  Renaming columns    — safe (tracked by column ID, not name)
-# ✓  Widening types      — safe (int→long, float→double)
-# ✗  Narrowing types     — NOT allowed (double→float loses precision)
-# ✗  Changing semantics  — NOT safe (renaming to mean something different)
+# Allowed:     Adding columns      — always safe
+# Allowed:     Dropping columns    — safe (data stays, not visible)
+# Allowed:     Renaming columns    — safe (tracked by column ID, not name)
+# Allowed:     Widening types      — safe (int→long, float→double)
+# Not allowed: Narrowing types     — NOT allowed (double→float loses precision)
+# Not allowed: Changing semantics  — NOT safe (renaming to mean something different)
 ```
 
 ---

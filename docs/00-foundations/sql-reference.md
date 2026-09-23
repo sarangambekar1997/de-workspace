@@ -7,11 +7,11 @@
 
 ---
 
-## Plain English: What Is SQL and Why Is It Still Everywhere?
+## Overview
 
-**The problem:** Data sits in tables — orders, customers, events — often billions of rows across many machines. You need to ask questions of it ("revenue by region last quarter") without writing a program that loops over every row.
+**Challenge:** Business data is stored in tables — orders, customers, events — often billions of rows distributed across many machines. Answering a question such as "revenue by region last quarter" should not require writing a program that iterates over every row.
 
-**SQL is the fix:** you *describe the result you want*, and the database figures out how to get it — which indexes to use, which order to join in, how to split the work across a cluster. The same few keywords work in Postgres, Snowflake, BigQuery, Databricks, DuckDB, and Spark.
+**Solution:** SQL is declarative: you describe the result, and the engine determines how to produce it — which indexes to use, the join order, and how to parallelize the work. The same core syntax works across relational databases, cloud warehouses, lakehouse engines, and embedded engines.
 
 ```
 You write:                                    The engine decides:
@@ -21,7 +21,7 @@ You write:                                    The engine decides:
   GROUP  BY region;                             merge partial sums → 5 rows back
 ```
 
-**Why it matters for data engineers:** SQL is the language of the warehouse, of dbt, of data quality checks, and of most interviews. If you only get really good at one language for this job, make it SQL — especially joins, `GROUP BY`, and window functions.
+**Relevance to data engineering:** SQL is the primary language of warehouses, transformation layers, and data quality checks, and it is central to technical interviews. Joins, aggregation, and window functions deserve particular depth.
 
 ---
 

@@ -7,11 +7,11 @@
 
 ---
 
-## Plain English: What Are Embeddings?
+## Overview
 
-**The problem:** Computers compare text by characters. A keyword search for "customer churn" misses a document titled "Why users cancel their subscriptions", even though it's exactly what you wanted. SQL `LIKE` and full-text search only know the words, not what they mean.
+**Challenge:** Keyword matching compares words, not meaning. A search for "customer churn" misses a document titled "Why users cancel their subscriptions", although it is exactly what was needed. SQL `LIKE` and full-text search share this limitation.
 
-**Embeddings are the fix:** an embedding model turns any text into a list of numbers (a vector, e.g. 1,024 of them) so that texts with *similar meaning* end up close together. "Customer churn" and "users cancelling subscriptions" land near each other; "customer churn" and "butter churn" don't. Once text is numbers, "find similar things" becomes simple math — the distance between vectors.
+**Solution:** an embedding model converts text into a vector of numbers (for example, 1,024 dimensions) such that texts with *similar meaning* are close together. "Customer churn" and "users cancelling subscriptions" map to nearby vectors, while "customer churn" and "butter churn" do not. Finding similar content then becomes a distance calculation.
 
 ```
             meaning space (squashed to 2-D)
@@ -24,7 +24,7 @@
    close together = similar meaning   ·   far apart = unrelated
 ```
 
-**Why data engineers care:** embeddings are the core of RAG and semantic search, and they're also useful for deduplicating messy records, classifying text without training a model, and clustering. Generating and storing them at scale — batching, incremental updates, versioning — is a data pipeline problem.
+**Relevance to data engineering:** embeddings underpin RAG and semantic search, and support record deduplication, classification without model training, and clustering. Generating and storing them at scale — batching, incremental updates, versioning — is a data pipeline problem.
 
 ---
 

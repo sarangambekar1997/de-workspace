@@ -7,22 +7,22 @@
 
 ---
 
-## Plain English: What Is Terraform and Why Should a Data Engineer Care?
+## Overview
 
-**The problem:** A data platform is a lot of infrastructure: S3 buckets, IAM roles, Snowflake databases, warehouses and grants, Databricks workspaces and jobs, Airflow environments. Clicking these together in web consoles works once — then nobody remembers the exact settings, dev and prod quietly drift apart, and rebuilding after a mistake takes days.
+**Challenge:** A data platform consists of extensive infrastructure: storage buckets, identity and access policies, warehouse databases and permissions, compute workspaces and jobs, and orchestration environments. Configuring these manually in web consoles is not repeatable — settings go undocumented, environments drift apart, and recovery after a mistake is slow.
 
-**Terraform is the fix:** you *declare* the infrastructure you want in `.tf` files, and Terraform works out what to create, change, or delete to make reality match. The files live in Git, so every infrastructure change is reviewed in a pull request, and the same code builds dev, staging, and prod.
+**Solution:** Terraform lets you *declare* the desired infrastructure in `.tf` files and calculates what to create, change, or delete to match it. The configuration lives in Git, so every change is reviewed in a pull request, and the same code builds development, staging, and production.
 
 ```
  .tf files (desired state)      terraform plan                    terraform apply
  ───────────────────────   →   compare with state + real   →   create / update / delete
  "a bucket, a role,             infrastructure; show a          via each provider's API
-  a warehouse, a grant"         diff for review                 (AWS, Snowflake, Databricks)
+  a warehouse, a grant"         diff for review                 (cloud, database, SaaS)    
                                                                          │
                                                               state file records what exists
 ```
 
-**The key idea is state:** Terraform keeps a state file mapping your code to real resource IDs. Protect it (remote backend, locking, versioning), because a lost or corrupted state file means Terraform no longer knows what it manages.
+**State management:** Terraform maintains a state file that maps configuration to real resource IDs. It must be protected with a remote backend, locking, and versioning — a lost or corrupted state file leaves Terraform unaware of what it manages.
 
 ---
 
@@ -82,7 +82,7 @@ With IaC (Terraform):
 
 | Concept | Description |
 |---------|-------------|
-| **Provider** | Plugin that talks to a cloud API (AWS, Snowflake, Databricks) |
+| **Provider** | Plugin that talks to an external API (cloud providers, databases, SaaS platforms) |
 | **Resource** | An infrastructure object to create (S3 bucket, IAM role, Snowflake database) |
 | **Data source** | Read existing infrastructure without managing it |
 | **Variable** | Input parameter (like a function argument) |

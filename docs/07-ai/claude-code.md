@@ -7,22 +7,22 @@
 
 ---
 
-## Plain English: What Is Claude Code?
+## Overview
 
-**The problem:** Chat assistants can explain code, but you still copy snippets back and forth, paste error messages in, and do the actual editing, running, and testing yourself. They can't see your repository, run `dbt build`, or notice that the test they just broke lives in another file.
+**Challenge:** Chat assistants can explain code, but the developer still copies snippets back and forth and performs all editing, running, and testing. The assistant cannot see the repository, run the test suite, or notice that a change breaks a test in another file.
 
-**Claude Code is the fix:** an AI coding agent that works *inside* your project — in the terminal, in your IDE, on the desktop, or in the browser. It reads your files, searches the codebase, edits code, runs commands (tests, linters, `dbt compile`, `git`), looks at the results, and iterates until the task is done, asking permission before anything risky.
+**Solution:** Claude Code is an AI coding agent that works *inside* the project — in the terminal, IDE, desktop app, or browser. It reads and searches the codebase, edits files, runs commands (tests, linters, build tools, `git`), evaluates the results, and iterates until the task is complete, requesting permission before risky actions.
 
 ```
-You: "fct_orders double-counts refunds — fix it and add a test"
-  → reads models/marts/fct_orders.sql and its upstream staging models
-  → finds the join fan-out on stg_refunds
-  → edits the model, adds a uniqueness test in the YAML
-  → runs: dbt build -s fct_orders+   → tests pass
-  → summarizes the change and shows the diff for review
+Request: "The orders summary double-counts refunds — fix it and add a test"
+  → reads the orders transformation and its upstream sources
+  → identifies a join fan-out on the refunds table
+  → corrects the join and adds a uniqueness test
+  → runs the project's test command   → tests pass
+  → summarizes the change and presents the diff for review
 ```
 
-**How you steer it:** a `CLAUDE.md` file in the repo holds project conventions (it's read every session), permission modes and allow-lists decide what it can do without asking, MCP servers connect it to tools like your warehouse or Airflow, and hooks and skills automate your team's workflows.
+**Configuration:** a `CLAUDE.md` file in the repository holds project conventions and is read every session; permission modes and allow-lists control what runs without approval; MCP servers connect it to external systems such as databases and orchestrators; and hooks and skills automate team workflows.
 
 ---
 

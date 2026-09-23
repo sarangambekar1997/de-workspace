@@ -7,11 +7,11 @@
 
 ---
 
-## Plain English: What Is RAG and Why Do You Need It?
+## Overview
 
-**The problem:** LLMs are trained on public data up to a cutoff date. They know nothing about your internal systems, your data dictionary, your runbooks, or anything that happened after their training.
+**Challenge:** LLMs are trained on public data up to a cutoff date. They have no knowledge of internal systems, data dictionaries, runbooks, or events after training.
 
-**RAG is the fix:** Before asking the LLM a question, you look up relevant documents from your own knowledge base and paste them into the prompt. The LLM then answers based on *your* data, not just its training.
+**Solution:** Retrieval-augmented generation retrieves relevant documents from an organization's own knowledge base and includes them in the prompt, so the model answers from that content rather than from its training data alone.
 
 ```
 Without RAG:

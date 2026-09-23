@@ -7,13 +7,11 @@
 
 ---
 
-## Plain English: What Is Kafka and Why Do We Need It?
+## Overview
 
-**The problem Kafka solves:**
+**Challenge:** In a typical commerce platform, many services react to the same event — billing, inventory, notifications, analytics, fraud detection, and shipping all need to know when an order is placed. Point-to-point integrations or one queue per consumer create a fragile web of dependencies that does not scale.
 
-Imagine your e-commerce app has 10 services that all care about when an order is placed: billing, inventory, notifications, analytics, fraud detection, shipping... With a traditional message queue, you'd need a separate queue connection from the orders service to each consumer. That doesn't scale.
-
-Kafka is a **shared log** — the orders service writes the event once, and any number of consumers read it independently, at their own pace.
+**Solution:** Kafka is a durable, **shared log**. The producing service writes each event once, and any number of consumers read it independently, at their own pace.
 
 ```
 Without Kafka:                     With Kafka:
@@ -27,7 +25,7 @@ Orders → Notifications         ┌─────────────┼�
                           (each reads at own pace, independently)
 ```
 
-**Key insight:** Kafka keeps messages for days/weeks. A consumer can reprocess old messages, a new consumer can start from the beginning, and a crashed consumer picks up exactly where it left off — none of this is possible with traditional queues.
+**Key property:** Kafka retains messages for a configurable period (days to weeks, or indefinitely). Consumers can reprocess history, new consumers can start from the beginning, and a restarted consumer resumes from its last committed position — capabilities that traditional queues, which delete messages once consumed, do not offer.
 
 ---
 
@@ -419,11 +417,11 @@ producer.flush()
 
 | Change | Backward compatible? | Forward compatible? |
 |--------|---------------------|---------------------|
-| Add field with default | ✅ | ✅ |
-| Remove field with default | ✅ | ✅ |
-| Add field without default | ❌ | ✅ |
-| Remove required field | ✅ | ❌ |
-| Change field type | ❌ | ❌ |
+| Add field with default | Yes | Yes |
+| Remove field with default | Yes | Yes |
+| Add field without default | No | Yes |
+| Remove required field | Yes | No |
+| Change field type | No | No |
 
 ---
 

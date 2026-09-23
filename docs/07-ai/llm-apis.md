@@ -7,25 +7,25 @@
 
 ---
 
-## Plain English: What Is an LLM API?
+## Overview
 
-**The problem:** Chat interfaces are great for one-off questions, but a pipeline can't click buttons. To classify 2 million support tickets, extract fields from invoices every hour, or summarize failed DAG logs automatically, you need to call the model from code.
+**Challenge:** Chat interfaces suit one-off questions, but automated workloads — classifying millions of support tickets, extracting fields from invoices every hour, or summarizing failed job logs — require calling the model programmatically.
 
-**An LLM API is the fix:** an HTTP endpoint (wrapped in an SDK) that you send a request to — model name, instructions, input, and settings — and get back generated content plus token usage. It's just another external service in your pipeline, with the same concerns as any other: authentication, rate limits, retries, cost, latency, and logging.
+**Solution:** an LLM API is an HTTP endpoint, usually accessed through an SDK, that accepts a model name, instructions, input, and settings, and returns generated content with token usage. It is an external service like any other in a pipeline, with the same concerns: authentication, rate limits, retries, cost, latency, and logging.
 
 ```
 your code ──→ client.messages.create(model, system, messages, tools, ...) ──→ LLM provider
           ←── content blocks (thinking / text / tool_use) + usage (tokens) ←──
 ```
 
-**The three things that drive every design decision:** *tokens* (you pay per input and output token, and context windows have limits), *latency* (seconds, not milliseconds — use streaming, batching, or async), and *non-determinism* (validate outputs, don't trust them blindly).
+**Key design constraints:** *tokens* (billing is per input and output token, and context windows are finite), *latency* (seconds rather than milliseconds — use streaming, batching, or concurrency), and *non-determinism* (validate outputs rather than trusting them).
 
 ---
 
 ## Table of Contents
 
 **Basic**
-- [Overview](#overview)
+- [Provider Comparison](#provider-comparison)
 - [Anthropic SDK Setup](#anthropic-sdk-setup)
 - [First API Call](#first-api-call)
 - [OpenAI SDK Setup](#openai-sdk-setup)
@@ -50,7 +50,7 @@ your code ──→ client.messages.create(model, system, messages, tools, ...) 
 
 ---
 
-## Overview
+## Provider Comparison
 
 | | Anthropic | OpenAI |
 |-|-----------|--------|

@@ -7,11 +7,11 @@
 
 ---
 
-## Plain English: What Is Data Modeling?
+## Overview
 
-**The problem:** Source systems store data the way the *application* needs it — dozens of normalized tables, cryptic column names, status codes, and history overwritten on every update. Analysts asking "what was revenue by region last quarter?" would need a 12-table join and would still get different answers from one another.
+**Challenge:** Source systems store data in the shape the *application* needs — many normalized tables, cryptic column names, status codes, and history overwritten on every update. Answering a simple business question requires complex joins, and different analysts arrive at different results.
 
-**Data modeling is the fix:** you decide, on purpose, how data is shaped for *analysis*. The most common answer is a **star schema**: a central **fact** table of events you measure (orders, clicks, payments) surrounded by **dimension** tables that describe them (customer, product, date).
+**Solution:** Data modeling deliberately shapes data for *analysis*. The most common approach is the **star schema**: a central **fact** table of measured events (orders, clicks, payments) surrounded by **dimension** tables that describe them (customer, product, date).
 
 ```
 Application tables (OLTP)                 Analytics model (star schema)
@@ -24,7 +24,7 @@ promos, payments, refunds ...      →     dim_customer ─ fct_orders ─ dim_p
                                           (built for simple, fast reads)
 ```
 
-**The two questions that drive every design:** What is the **grain** — what does one row represent? And how should **history** behave when attributes change (slowly changing dimensions)?
+**Key design decisions:** the **grain** (what a single row represents) and how **history** is handled when descriptive attributes change (slowly changing dimensions).
 
 ---
 
@@ -86,23 +86,23 @@ Normalization removes redundancy by splitting data into related tables.
 1NF (First Normal Form):
   - Each column holds one value (no arrays, no comma-separated lists)
   - Each row is unique (has a primary key)
-  ✗ BAD:  orders(id, customer_name, customer_email, items="pen,paper,stapler")
-  ✓ GOOD: orders(id, customer_id), order_items(order_id, product_id)
+  Bad:  orders(id, customer_name, customer_email, items="pen,paper,stapler")
+  Good: orders(id, customer_id), order_items(order_id, product_id)
 
 2NF (Second Normal Form):
   - 1NF + every non-key column depends on the WHOLE primary key
   - Eliminates partial dependencies (applies to composite keys)
-  ✗ BAD:  order_items(order_id, product_id, product_name)
+  Bad:  order_items(order_id, product_id, product_name)
            product_name depends on product_id alone, not the composite key
-  ✓ GOOD: order_items(order_id, product_id, quantity)
+  Good: order_items(order_id, product_id, quantity)
            products(product_id, product_name)
 
 3NF (Third Normal Form):
   - 2NF + no non-key column depends on another non-key column
   - Eliminates transitive dependencies
-  ✗ BAD:  orders(order_id, customer_id, customer_city, customer_country)
+  Bad:  orders(order_id, customer_id, customer_city, customer_country)
            customer_country depends on customer_city, not order_id
-  ✓ GOOD: orders(order_id, customer_id)
+  Good: orders(order_id, customer_id)
            customers(customer_id, city_id)
            cities(city_id, city_name, country)
 ```

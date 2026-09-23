@@ -7,11 +7,11 @@
 
 ---
 
-## Plain English: What Is a Vector Database?
+## Overview
 
-**The problem:** Once you've turned documents into embeddings (lists of numbers), you need to find the handful of vectors closest to a query — fast. Comparing the query with every stored vector works for ten thousand vectors; for ten million, each search would take seconds, and you'd still need to filter by source, date, or customer.
+**Challenge:** Once documents are converted to embeddings, applications must quickly find the vectors closest to a query. Comparing the query with every stored vector is feasible for thousands of vectors but too slow for millions, and results usually also need filtering by source, date, or tenant.
 
-**A vector database is the fix:** it stores vectors alongside their metadata and builds special indexes (like HNSW graphs) that find *approximately* the nearest neighbors in milliseconds, without checking every vector. It also handles the database basics: upserts and deletes, metadata filters, access control, replication, and scaling.
+**Solution:** a vector database stores vectors with their metadata and builds specialized indexes (such as HNSW graphs) that find *approximate* nearest neighbors in milliseconds without scanning every vector. It also provides database fundamentals: upserts and deletes, metadata filtering, access control, replication, and scaling.
 
 ```
 query: "why did the orders DAG fail?"  →  embed  →  [0.12, -0.44, ...]
@@ -21,7 +21,7 @@ query: "why did the orders DAG fail?"  →  embed  →  [0.12, -0.44, ...]
                     top-5 nearest chunks  +  filter: source = 'runbooks', env = 'prod'
 ```
 
-**Do you need a separate one?** Often not at first. If you already run Postgres, pgvector goes a long way; many warehouses and lakehouses now include vector search. Dedicated vector databases earn their place at large scale, with heavy filtering, many tenants, or strict latency targets.
+**When a dedicated database is needed:** often not initially. A relational database with a vector extension (such as PostgreSQL with pgvector) covers many use cases, and most warehouses and lakehouses now include vector search. Dedicated vector databases are justified at large scale, with heavy filtering, many tenants, or strict latency targets.
 
 ---
 

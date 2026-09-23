@@ -7,11 +7,11 @@
 
 ---
 
-## Plain English: What Is Databricks and What Is a Lakehouse?
+## Overview
 
-**The problem:** Companies used to run two separate systems: a cheap *data lake* (files on S3) for raw data and ML, and an expensive *data warehouse* for clean, reliable SQL reporting. Data was copied between them, the copies drifted, and governance had to be set up twice.
+**Challenge:** Organizations historically ran two separate systems: a low-cost *data lake* (files in object storage) for raw data and machine learning, and a *data warehouse* for curated SQL reporting. Data was copied between them, the copies diverged, and governance had to be implemented twice.
 
-**Databricks' answer is the *lakehouse*:** keep one copy of the data in open files on your own cloud storage, and add a transaction layer (Delta Lake) that gives those files warehouse features — ACID transactions, schemas, `MERGE`, time travel. On top, Databricks provides managed Spark compute, SQL warehouses for BI, notebooks, job orchestration, ML tooling, and one governance layer (Unity Catalog).
+**Solution — the lakehouse:** a single copy of the data is kept in open file formats in your own cloud storage, with a transaction layer (Delta Lake) that adds warehouse capabilities — ACID transactions, schema enforcement, `MERGE`, and time travel. Databricks builds on this with managed Spark compute, SQL warehouses for BI, notebooks, job orchestration, ML tooling, and a unified governance layer (Unity Catalog).
 
 ```
            Notebooks · Jobs · SQL editor · BI tools · ML
@@ -25,7 +25,7 @@
                  Your cloud storage (S3 / ADLS / GCS)
 ```
 
-**Think of it as:** "managed Spark plus a warehouse layer on your own files". If you know PySpark and SQL, most of Databricks is learning where things live (catalogs, jobs, clusters) and the Delta-specific operations (`MERGE`, `OPTIMIZE`, `VACUUM`, time travel).
+**Summary:** Databricks combines managed Spark with a warehouse layer over your own files. Engineers who know PySpark and SQL mainly need to learn its organization (catalogs, jobs, compute) and the Delta-specific operations (`MERGE`, `OPTIMIZE`, `VACUUM`, time travel).
 
 ---
 

@@ -8,15 +8,17 @@
 
 ---
 
-## Plain English: What Is <Topic> and Why Do You Need It?
+## Overview
 
-**The problem:** What breaks or hurts without this tool/concept. Two or three sentences, no jargon.
+**Challenge:** The problem this tool or concept addresses, in two or three sentences.
 
-**The fix:** What <Topic> does about it, in one paragraph.
+**Solution:** How <Topic> addresses it, in one paragraph.
 
 ```
-Small ASCII diagram or before/after comparison that makes the idea click.
+Diagram or before/after comparison illustrating the core idea.
 ```
+
+**Relevance to data engineering:** Where it appears in a data platform. Keep examples tool-neutral unless the guide is about a specific tool.
 
 ---
 

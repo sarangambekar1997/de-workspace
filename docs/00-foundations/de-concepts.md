@@ -7,27 +7,27 @@
 
 ---
 
-## Plain English: What Does a Data Engineer Actually Do?
+## Overview
 
-A **data engineer** builds and maintains the pipes that move data from where it's created to where it's useful.
+Data engineering is the discipline of building and operating the systems that move data from where it is produced to where it is used — reliably, on time, and with known quality.
 
 ```
 Source systems        Pipelines (you build these)       Consumers
 ─────────────    →    ─────────────────────────    →    ──────────
-Your app's DB         Extract → Transform → Load         Dashboards
-Stripe/Salesforce     Schedule → Monitor → Alert         Data scientists
+Application databases Extract → Transform → Load         Dashboards
+SaaS APIs             Schedule → Monitor → Alert         Data scientists
 Kafka event stream    Handle failures → Retry             ML models
 S3 log files          Ensure quality → Document          Analysts
 ```
 
-**An analogy:** Think of a city's water system. The data engineer is the plumber — not the water company (source systems), not the people who drink the water (analysts/scientists), but the person who lays the pipes, ensures the right pressure, filters out the bad stuff, and makes sure the taps always work.
+**Role in the organization:** Source systems produce data and analysts, data scientists, and applications consume it. The data engineer owns what happens in between: ingestion, transformation, storage layout, orchestration, quality, and the reliability of every step.
 
-**Common day-to-day tasks:**
-- Build a pipeline that loads Stripe payments into Snowflake every hour
-- Fix a DAG that's been failing because the source API changed its schema
-- Optimize a slow dbt model that's timing out in production
-- Set up monitoring to alert when data is stale or has quality issues
-- Help an analyst understand why their revenue numbers don't match
+**Typical responsibilities:**
+- Build a pipeline that loads payment events from a SaaS API into the warehouse every hour
+- Repair a scheduled pipeline after the source API changes its schema
+- Optimize a slow SQL transformation that exceeds its time window
+- Monitor freshness and quality, and alert when data is late or incorrect
+- Trace a discrepancy between two reports back to its root cause
 
 ---
 

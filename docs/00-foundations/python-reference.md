@@ -7,11 +7,11 @@
 
 ---
 
-## Plain English: Why Python for Data Engineering?
+## Overview
 
-**The problem:** SQL is brilliant at transforming data that's already in a database, but it can't call a REST API, read a file from S3, retry on a timeout, or decide what to do when a schema changes. Something has to glue the systems together.
+**Challenge:** SQL is well suited to transforming data inside a database, but pipelines also need to call REST APIs, read files from object storage, retry on transient failures, and react to schema changes. That integration work requires a general-purpose language.
 
-**Python is the glue:** it's the language of almost every DE tool — Airflow DAGs, PySpark jobs, dbt's Python models, Kafka consumers, Great Expectations, boto3 for AWS. If SQL is how you *transform* data, Python is how you *move and orchestrate* it.
+**Solution:** Python is the common language of the data engineering ecosystem — orchestration code, Spark jobs, streaming consumers, data quality frameworks, and cloud SDKs all use it. SQL typically *transforms* data; Python *moves and orchestrates* it.
 
 ```
 Typical DE Python script:
@@ -20,7 +20,7 @@ Typical DE Python script:
      extract              guard               transform             load                observe
 ```
 
-**What matters most for DE** isn't clever algorithms — it's writing code that is *idempotent* (safe to rerun), *observable* (logs what it did), *memory-aware* (streams large files instead of loading them whole), and *configurable* (no hardcoded credentials or dates).
+**Priorities for data engineering:** Production code must be *idempotent* (safe to rerun), *observable* (logs what it did), *memory-aware* (streams large files instead of loading them whole), and *configurable* (no hardcoded credentials or dates).
 
 ---
 

@@ -7,13 +7,11 @@
 
 ---
 
-## Plain English: What Is Spark and Why Not Just Use Pandas?
+## Overview
 
-**The problem Spark solves:**
+**Challenge:** Single-machine tools such as pandas work well until the data no longer fits in memory. A typical server has tens of gigabytes of RAM, while production datasets can reach many terabytes.
 
-Pandas is great — until your data doesn't fit in RAM. A single machine has maybe 64GB of memory. A production dataset might be 10TB. Pandas would crash.
-
-Spark runs across a **cluster of machines**. It splits your data into chunks (partitions), distributes them across many machines, processes them in parallel, and combines the results. What would take 8 hours on a single machine takes 10 minutes on a 50-node cluster.
+**Solution:** Spark runs on a **cluster of machines**. It splits data into partitions, distributes them across the cluster, processes them in parallel, and combines the results, so work that would take hours on one machine completes in minutes.
 
 ```
 Pandas:                          PySpark:
@@ -29,7 +27,7 @@ Rule of thumb:
 ```
 
 **Key concept — lazy evaluation:**
-When you write `df.filter(...).groupBy(...).agg(...)`, Spark doesn't actually run anything. It builds a plan. Only when you call an *action* (`.show()`, `.count()`, `.write()`) does Spark execute. This lets Spark optimize the whole chain before touching a single byte of data.
+A chain such as `df.filter(...).groupBy(...).agg(...)` does not execute immediately; Spark builds a logical plan. Execution starts only when an *action* (`.show()`, `.count()`, `.write()`) is called, which allows Spark to optimize the entire chain before reading any data.
 
 ---
 
