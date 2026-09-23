@@ -20,7 +20,6 @@
 **Advanced**
 - [Performance & Cost Optimization](#performance--cost-optimization)
 - [Lifecycle Policies](#lifecycle-policies)
-- [Cross-Cloud Patterns](#cross-cloud-patterns)
 - [Storage in Spark & Databricks](#storage-in-spark--databricks)
 
 ---

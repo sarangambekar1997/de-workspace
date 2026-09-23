@@ -600,6 +600,7 @@ for tc in test_cases:
     has_keywords = all(kw.lower() in answer_text.lower() for kw in tc["expected_keywords"])
     print(f"Q: {tc['question'][:50]}")
     print(f"  Faithfulness: {faithfulness:.2f}  Relevance: {relevance:.2f}  Keywords: {has_keywords}")
+```
 
 ---
 
@@ -619,4 +620,3 @@ A: After initial retrieval (fast, ANN search), re-ranking uses a more expensive 
 
 **Q: How do you evaluate a RAG pipeline?**
 A: Four metrics: (1) Faithfulness — does the answer only use information from retrieved context? (2) Answer relevance — does it actually answer the question? (3) Context precision — how many retrieved chunks were actually useful? (4) Context recall — did retrieval find all the relevant information? Use LLM-as-judge for automated evaluation, and maintain a golden test set of question-answer pairs to catch regressions when you change chunking, retrieval, or the generation prompt.
-```

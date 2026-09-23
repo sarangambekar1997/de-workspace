@@ -45,7 +45,6 @@ Orders → Notifications         ┌─────────────┼�
 
 **Advanced**
 - [Kafka Connect](#kafka-connect)
-- [Kafka Streams](#kafka-streams)
 - [Retention & Compaction](#retention--compaction)
 - [Performance Tuning](#performance-tuning)
 - [Kafka in DE Pipelines](#kafka-in-de-pipelines)
