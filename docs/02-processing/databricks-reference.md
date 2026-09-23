@@ -446,12 +446,13 @@ WHERE  o.region IN (SELECT region FROM security.user_regions
 
 Workflows orchestrate multi-task pipelines — notebooks, Python scripts, dbt commands, SQL statements, and Spark JARs.
 
+Job definition (API / Terraform), scheduled daily at 02:00 UTC:
+
 ```json
-// Job definition (API / Terraform)
 {
   "name": "orders_daily_pipeline",
   "schedule": {
-    "quartz_cron_expression": "0 0 2 * * ?",  // 2am UTC daily
+    "quartz_cron_expression": "0 0 2 * * ?",
     "timezone_id": "UTC",
     "pause_status": "UNPAUSED"
   },

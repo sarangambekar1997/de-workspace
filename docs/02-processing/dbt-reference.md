@@ -1035,4 +1035,4 @@ A: dbt uses profiles.yml to define target environments. In dev, models are built
 
 ---
 
-**Previous:** [Snowflake](../01-storage/snowflake-reference.md) · **Next:** [Data Quality](../05-quality-governance/data-quality.md) · **Back to:** [Index](../README.md)
+**Previous:** [Amazon Redshift](../01-storage/redshift-reference.md) · **Next:** [Data Quality](../05-quality-governance/data-quality.md) · **Back to:** [Index](../README.md)

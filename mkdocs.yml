@@ -86,16 +86,22 @@ nav:
       - Cloud Storage: 01-storage/cloud-storage.md
       - Data Modeling: 01-storage/data-modeling.md
       - Snowflake: 01-storage/snowflake-reference.md
+      - BigQuery: 01-storage/bigquery-reference.md
+      - Amazon Redshift: 01-storage/redshift-reference.md
       - Apache Iceberg: 01-storage/apache-iceberg.md
-  - Processing:
+  - Ingestion & Processing:
+      - Ingestion & CDC: 02-processing/ingestion-cdc.md
+      - DuckDB & Polars: 02-processing/duckdb-polars.md
       - PySpark: 02-processing/pyspark-reference.md
       - Databricks: 02-processing/databricks-reference.md
       - dbt: 02-processing/dbt-reference.md
   - Orchestration & Streaming:
       - Apache Airflow: 03-orchestration/airflow-reference.md
       - Apache Kafka: 04-streaming/kafka-reference.md
+      - Apache Flink: 04-streaming/flink-reference.md
   - Quality & Infrastructure:
       - Data Quality: 05-quality-governance/data-quality.md
+      - Governance & Lineage: 05-quality-governance/governance-lineage.md
       - Docker: 06-infrastructure/docker-reference.md
       - Terraform: 06-infrastructure/terraform-for-de.md
   - AI & ML:
@@ -112,4 +118,7 @@ nav:
       - Fine-Tuning: 07-ai/fine-tuning.md
       - AI Observability: 07-ai/ai-observability.md
       - Local LLMs: 07-ai/local-llms.md
+  - Architecture:
+      - System Design: 08-architecture/system-design.md
+      - Cost Optimization: 08-architecture/cost-optimization.md
   - Glossary: 99-reference/glossary.md

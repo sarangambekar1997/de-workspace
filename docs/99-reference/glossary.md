@@ -9,9 +9,13 @@
 
 ## A
 
+**ABAC (Attribute-Based Access Control)** — Access policies evaluated against attributes of the data (such as classification tags) and of the user (such as group or region), so one policy can govern thousands of tables. See [Governance & Lineage](../05-quality-governance/governance-lineage.md).
+
 **Accumulating Snapshot Fact** — A fact table pattern where one row tracks an entire business process lifecycle (e.g., one row per order that gets updated with shipped_at, delivered_at as events occur). Contrast with transaction facts.
 
 **ANN (Approximate Nearest Neighbor)** — A search algorithm that finds vectors similar to a query vector without scanning all vectors. Trades tiny accuracy loss for large speed gains. Used in vector databases.
+
+**Apache Arrow** — A columnar in-memory data format shared by many engines (pandas, Polars, DuckDB, Spark), allowing data to move between them with little or no copying.
 
 **Avro** — A row-based binary data format with schema embedded in the file. Used widely in Kafka for its schema evolution support. Contrast with Parquet (columnar).
 
@@ -39,6 +43,8 @@
 
 **Consumer Group (Kafka)** — A set of Kafka consumers that collectively read from a topic. Each partition is assigned to exactly one consumer in the group. Enables parallel consumption and horizontal scaling.
 
+**Crypto-shredding** — Making data unrecoverable by deleting its encryption key — used to honour deletion requests in immutable storage and backups.
+
 **CTE (Common Table Expression)** — A named temporary result set defined within a SQL query using the `WITH` keyword. Makes complex queries more readable.
 
 **Credits (Snowflake)** — The unit of compute cost in Snowflake. Each virtual warehouse size consumes credits per hour of active use.
@@ -46,6 +52,8 @@
 ## D
 
 **DAG (Directed Acyclic Graph)** — A graph where edges have direction and no cycles. In Airflow, a DAG represents a workflow where tasks are nodes and dependencies are edges.
+
+**Data Catalog** — A searchable inventory of datasets with technical, operational, and business metadata such as schemas, owners, descriptions, lineage, and usage.
 
 **Data Contract** — A formal agreement between a data producer and consumer specifying schema, semantics, quality guarantees, and SLA.
 
@@ -57,6 +65,10 @@
 
 **Data Mart** — A subset of a data warehouse focused on a specific business domain (e.g., sales mart, finance mart).
 
+**Data Mesh** — An organizational approach in which domain teams own and publish their data as products — with contracts, SLAs, and documentation — on a shared self-service platform. See [System Design](../08-architecture/system-design.md).
+
+**Data Steward** — The person responsible for maintaining a dataset's definitions, classifications, and documentation on behalf of its owner.
+
 **Data Vault** — A modeling methodology for enterprise data warehouses using Hubs (business keys), Links (relationships), and Satellites (attributes + history).
 
 **Data Warehouse** — A centralized, structured analytical data store optimized for read-heavy query workloads. Examples: Snowflake, BigQuery, Redshift.
@@ -65,15 +77,23 @@
 
 **Dead Letter Queue (DLQ)** — A queue where messages that fail processing are routed for later inspection and reprocessing.
 
+**Debezium** — An open-source change data capture platform that reads database transaction logs and emits row-level change events, usually through Kafka Connect. See [Ingestion & CDC](../02-processing/ingestion-cdc.md).
+
 **Deduplication** — Removing duplicate records, either exact duplicates or near-duplicates (semantic deduplication using embeddings).
 
 **Delta Lake** — An open-source storage layer that brings ACID transactions, schema enforcement, time travel, and versioning to data lake files. Created by Databricks.
 
 **Dimension Table** — In a star schema, a table that provides descriptive context for facts (who, what, where, when). Examples: dim_customer, dim_product, dim_date.
 
+**Distribution Key (Redshift)** — The column whose hash determines which node slice stores each row. Matching distribution keys on large joined tables avoids moving data during joins. See [Amazon Redshift](../01-storage/redshift-reference.md).
+
 **Driver (Spark)** — The JVM process that runs the `main()` function of a Spark application. Coordinates executors, builds the execution plan, and collects results.
 
+**DuckDB** — An in-process analytical SQL database that queries Parquet, CSV, and JSON files directly and handles larger-than-memory data on a single machine. See [DuckDB & Polars](../02-processing/duckdb-polars.md).
+
 ## E
+
+**Egress** — Data transferred out of a cloud provider or region. Usually billed per GB and often the largest cost in multi-cloud or cross-region designs.
 
 **ELT (Extract, Load, Transform)** — A modern data integration pattern: data is extracted from sources, loaded raw into the destination, then transformed using the destination's compute power (e.g., dbt on Snowflake). Contrast with ETL.
 
@@ -90,6 +110,8 @@
 **Fan-out** — A messaging pattern where one message or event triggers multiple independent downstream consumers or processes.
 
 **Feature Store** — A centralized repository for ML features — precomputed, versioned, and shareable across models and teams.
+
+**FinOps** — The practice of making cloud spend visible, attributable, and efficient through collaboration between engineering, finance, and business teams. See [Cost Optimization](../08-architecture/cost-optimization.md).
 
 **Freshness SLA** — A commitment that data in a table will be available within a defined time window (e.g., "gold layer data available by 6am UTC").
 
@@ -127,13 +149,23 @@
 
 **Kafka Offset** — A sequential integer that identifies a message's position in a Kafka partition. Consumers track their own offsets to know where to resume.
 
+**Kafka Streams** — A Java library for stateful stream processing that reads from and writes to Kafka, running inside the application rather than on a separate cluster.
+
+**Kappa Architecture** — A streaming-only architecture in which all processing runs on an event log, and history is reprocessed by replaying the log. Contrast with Lambda architecture.
+
+**KTable** — In Kafka Streams, a table view of a stream holding the latest value per key (a changelog). Contrast with KStream, an unbounded stream of independent events.
+
 ## L
 
 **Lakehouse** — See Data Lakehouse.
 
+**Lambda Architecture** — An architecture that runs a batch layer (complete, accurate) and a speed layer (low-latency, approximate) in parallel and merges their results at query time.
+
 **Lazy Evaluation** — In Spark, transformations are not executed immediately — they build an execution plan (DAG) that runs only when an action is called. Enables optimization.
 
 **LLM (Large Language Model)** — A neural network trained on large amounts of text, capable of understanding and generating human language. Examples: Claude, GPT-4.
+
+**LSN (Log Sequence Number)** — A position in a database's transaction log (for example the Postgres WAL). CDC tools use it to order changes and resume from an exact point.
 
 ## M
 
@@ -159,6 +191,8 @@
 
 **OLTP (Online Transaction Processing)** — Systems optimized for fast, concurrent read-write transactions. Row-based storage. Examples: PostgreSQL, MySQL, DynamoDB.
 
+**OpenLineage** — An open standard for lineage metadata: jobs emit run events describing their inputs and outputs, and a backend assembles the lineage graph.
+
 **Orchestration** — Coordinating the execution order, scheduling, and dependencies of pipeline tasks. Examples: Airflow, Prefect, Dagster.
 
 ## P
@@ -168,6 +202,8 @@
 **Partition (data)** — Dividing a dataset into sub-groups based on a column value (e.g., by date). Reduces data scanned per query if queries filter on the partition column.
 
 **Partition (Kafka)** — A log within a Kafka topic. Messages within a partition are ordered. Partitions enable parallelism — more partitions = more consumer parallelism.
+
+**Polars** — A multi-threaded DataFrame library with a lazy query optimizer and a streaming engine for larger-than-memory data.
 
 **Predicate Pushdown** — Pushing filter conditions down to the storage layer so only matching data is read. Supported by Parquet, Delta Lake, and columnar databases.
 
@@ -185,9 +221,17 @@
 
 **Repartition** — In Spark, redistributing data across partitions. Expensive (full shuffle), but fixes skew or right-sizes partitions before writing.
 
+**Replication Slot** — A Postgres object that tracks how far a logical replication consumer (such as a CDC connector) has read. An unused slot makes the database retain WAL indefinitely.
+
+**Reverse ETL** — Syncing modeled data from the warehouse back into operational tools such as CRM, marketing, or support systems.
+
 **Role-Playing Dimension** — When the same dimension table is used multiple times in a fact table with different semantic roles (e.g., dim_date used as order_date and ship_date).
 
+**RPU (Redshift Processing Unit)** — The unit of compute capacity in Amazon Redshift Serverless, billed per second while queries run.
+
 ## S
+
+**Savepoint (Flink)** — A manually triggered, portable snapshot of a Flink job's state, used to stop and resume jobs across upgrades, code changes, and rescaling. See [Apache Flink](../04-streaming/flink-reference.md).
 
 **SCD (Slowly Changing Dimension)** — A dimension table where attribute values change over time. Types: 0 (ignore), 1 (overwrite), 2 (add new row), 3 (add column).
 
@@ -199,13 +243,19 @@
 
 **Semantic Search** — Search by meaning rather than exact keyword matching. Powered by embeddings — finds documents conceptually similar to the query.
 
+**Showback / Chargeback** — Reporting cloud costs to the teams that incur them (showback), or billing those costs to their budgets (chargeback).
+
 **Silver Layer** — The second layer in medallion architecture. Data is cleaned, typed, deduplicated, and lightly joined. Conformed to business rules.
 
 **Skew** — Uneven distribution of data across partitions or tasks. One partition has far more data than others, causing bottlenecks.
 
 **SLA (Service Level Agreement)** — A commitment about data availability, freshness, or quality. E.g., "data available within 2 hours of source update."
 
+**Slot (BigQuery)** — A unit of compute capacity that BigQuery uses to execute queries; billed on demand by bytes processed or through reserved, autoscaling capacity. See [BigQuery](../01-storage/bigquery-reference.md).
+
 **Snowflake Schema** — A normalized star schema where dimension tables reference other dimension tables. More normalized but more joins than a star schema.
+
+**Sort Key (Redshift)** — The column order in which Redshift stores rows on disk. Zone maps (min/max per block) let filters on the sort key skip blocks.
 
 **Star Schema** — A dimensional modeling pattern with one central fact table surrounded by dimension tables. Optimized for analytical queries.
 
@@ -225,6 +275,8 @@
 
 ## U
 
+**Unit Economics (Data)** — Cost expressed per unit of value — per pipeline run, per table, per query, or per customer — to track efficiency as volume grows.
+
 **Upsert** — Insert if the record doesn't exist, update if it does. Implemented with MERGE in SQL, `mode("overwrite")` in Spark, or `upsert` in vector DBs.
 
 ## V
@@ -242,6 +294,8 @@
 **Windowed Aggregation** — Aggregating streaming data over a sliding or tumbling time window (e.g., count of events per 5-minute window).
 
 **Window Function (SQL)** — A SQL function that performs a calculation across a set of rows related to the current row without collapsing them (unlike GROUP BY). Examples: ROW_NUMBER, RANK, LAG, LEAD, SUM OVER.
+
+**Workload Identity Federation** — Exchanging a workload's native identity token (from a cloud, CI system, or Kubernetes) for short-lived credentials in another system, avoiding long-lived access keys.
 
 ## X
 

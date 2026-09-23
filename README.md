@@ -16,13 +16,14 @@ Every guide goes **Basic → Intermediate → Advanced** with working code examp
 | Folder | Covers |
 |--------|--------|
 | [`docs/00-foundations`](docs/00-foundations) | DE concepts, SQL, Python, Linux & Bash, Git |
-| [`docs/01-storage`](docs/01-storage) | Cloud storage, Snowflake, Apache Iceberg, data modeling |
-| [`docs/02-processing`](docs/02-processing) | PySpark, Databricks, dbt |
+| [`docs/01-storage`](docs/01-storage) | Cloud storage, data modeling, Snowflake, BigQuery, Redshift, Apache Iceberg |
+| [`docs/02-processing`](docs/02-processing) | Data ingestion & CDC, DuckDB & Polars, PySpark, Databricks, dbt |
 | [`docs/03-orchestration`](docs/03-orchestration) | Apache Airflow |
-| [`docs/04-streaming`](docs/04-streaming) | Apache Kafka |
-| [`docs/05-quality-governance`](docs/05-quality-governance) | Data quality, testing, contracts |
+| [`docs/04-streaming`](docs/04-streaming) | Apache Kafka, Apache Flink |
+| [`docs/05-quality-governance`](docs/05-quality-governance) | Data quality, governance, lineage, contracts |
 | [`docs/06-infrastructure`](docs/06-infrastructure) | Docker, Terraform |
 | [`docs/07-ai`](docs/07-ai) | Prompting, LLM APIs, embeddings, RAG, vector DBs, agents, evals, MLflow, fine-tuning |
+| [`docs/08-architecture`](docs/08-architecture) | System design, cost optimization |
 | [`docs/99-reference`](docs/99-reference) | Glossary |
 
 Folders are numbered roughly in learning order. New topics go in the folder that matches
@@ -33,9 +34,10 @@ where they sit in a pipeline, and a new top-level area gets the next free number
 | If you are… | Read |
 |-------------|------|
 | New to data engineering | [DE Concepts](docs/00-foundations/de-concepts.md) → [SQL](docs/00-foundations/sql-reference.md) → [Python](docs/00-foundations/python-reference.md) |
-| Focused on the warehouse | [Snowflake](docs/01-storage/snowflake-reference.md) → [dbt](docs/02-processing/dbt-reference.md) → [Data Quality](docs/05-quality-governance/data-quality.md) |
+| Focused on the warehouse | A warehouse ([Snowflake](docs/01-storage/snowflake-reference.md) / [BigQuery](docs/01-storage/bigquery-reference.md) / [Redshift](docs/01-storage/redshift-reference.md)) → [dbt](docs/02-processing/dbt-reference.md) → [Data Quality](docs/05-quality-governance/data-quality.md) |
 | Focused on big data | [PySpark](docs/02-processing/pyspark-reference.md) → [Databricks](docs/02-processing/databricks-reference.md) → [Kafka](docs/04-streaming/kafka-reference.md) |
 | Building with LLMs | [Prompt Engineering](docs/07-ai/prompt-engineering.md) → [LLM APIs](docs/07-ai/llm-apis.md) → [RAG](docs/07-ai/rag.md) |
+| Preparing for design interviews | [System Design](docs/08-architecture/system-design.md) → [Ingestion & CDC](docs/02-processing/ingestion-cdc.md) → [Data Modeling](docs/01-storage/data-modeling.md) |
 | Looking up a term | [Glossary](docs/99-reference/glossary.md) |
 
 The full learning paths, the "when should I use what" tables, and the cheat sheets are in the [index](docs/README.md).

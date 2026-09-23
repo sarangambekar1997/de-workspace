@@ -3,7 +3,7 @@
 
 **Prerequisites:** [SQL](../00-foundations/sql-reference.md)
 
-**Related:** [dbt](../02-processing/dbt-reference.md) · [Airflow](../03-orchestration/airflow-reference.md) · [Evals](../07-ai/eval-and-evals.md) · [Glossary](../99-reference/glossary.md)
+**Related:** [dbt](../02-processing/dbt-reference.md) · [Airflow](../03-orchestration/airflow-reference.md) · [Evals](../07-ai/eval-and-evals.md) · [Data Governance & Lineage](governance-lineage.md) · [Glossary](../99-reference/glossary.md)
 
 ---
 
@@ -824,4 +824,4 @@ A: If transformations live in dbt, start with dbt tests: they sit next to the mo
 
 ---
 
-**Previous:** [dbt](../02-processing/dbt-reference.md) · **Next:** [Airflow](../03-orchestration/airflow-reference.md) · **Back to:** [Index](../README.md)
+**Previous:** [dbt](../02-processing/dbt-reference.md) · **Next:** [Data Governance & Lineage](governance-lineage.md) · **Back to:** [Index](../README.md)
