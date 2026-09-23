@@ -60,11 +60,19 @@ Each guide follows a **Basic → Intermediate → Advanced** progression with re
 | [MLflow](mlflow.md) | Experiment tracking, model registry, serving, custom models, DE integration |
 | [Claude Code](claude-code.md) | CLI setup, CLAUDE.md, MCP servers, hooks, skills, CI/headless mode, DE workflows |
 
-### Conceptual
+### Infrastructure
+
+| Guide | What you'll learn |
+|-------|------------------|
+| [Terraform for DE](terraform-for-de.md) | IaC for S3, IAM, Snowflake, Databricks, MWAA Airflow — modules, remote state, CI patterns |
+
+### Conceptual & Reference
 
 | Guide | What you'll learn |
 |-------|------------------|
 | [DE Concepts](de-concepts.md) | OLTP/OLAP, batch vs streaming, lakehouse, medallion architecture, file formats, ETL/ELT |
+| [Data Modeling](data-modeling.md) | Star schema, SCDs, fact/dim design, snowflake schema, OBT, Data Vault, dbt layers |
+| [Glossary](glossary.md) | Definitions for every term used across all guides — one place to look things up |
 
 ---
 
@@ -73,12 +81,15 @@ Each guide follows a **Basic → Intermediate → Advanced** progression with re
 ### Path 1: Complete beginner → job-ready
 
 1. [DE Concepts](de-concepts.md) — understand the landscape
-2. [SQL Reference](sql-reference.md) — the universal language of data
-3. [Python for DE](python-reference.md) — scripting and automation
-4. [Linux & Bash](linux-bash.md) — work in production environments
-5. [Git for DE](git-for-de.md) — collaborate and ship safely
-6. [Cloud Storage](cloud-storage.md) — store and retrieve data at scale
-7. [Docker for DE](docker-reference.md) — package and run anything
+2. [Glossary](glossary.md) — reference when you hit an unfamiliar term
+3. [SQL Reference](sql-reference.md) — the universal language of data
+4. [Python for DE](python-reference.md) — scripting and automation
+5. [Data Modeling](data-modeling.md) — design data structures that scale
+6. [Linux & Bash](linux-bash.md) — work in production environments
+7. [Git for DE](git-for-de.md) — collaborate and ship safely
+8. [Cloud Storage](cloud-storage.md) — store and retrieve data at scale
+9. [Docker for DE](docker-reference.md) — package and run anything
+10. [Terraform for DE](terraform-for-de.md) — provision infra as code
 
 ### Path 2: Warehouse & transformation focus
 
