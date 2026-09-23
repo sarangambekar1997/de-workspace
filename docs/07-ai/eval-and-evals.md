@@ -7,6 +7,22 @@
 
 ---
 
+## Plain English: What Are Evals?
+
+**The problem:** You change a prompt, swap a model, or tweak chunking, and the answers *feel* better on the three examples you tried. But did it break something else? With normal code, unit tests tell you. LLM outputs vary from run to run and are often open-ended, so `assert output == expected` doesn't work — and "it looked fine" is how regressions reach production.
+
+**Evals are the fix:** a fixed set of realistic test inputs plus a way to *score* the outputs — exact checks where possible, code-based checks (valid JSON? SQL runs?), a second LLM grading against a rubric, or human review. Run the eval set on every change and compare scores, like a test suite that reports a percentage instead of pass/fail.
+
+```
+eval set (inputs + expectations)  ──→  your LLM app (version A / B)  ──→  graders  ──→  scores
+  150 real questions, edge cases           prompt v7, claude-sonnet-5         code checks      A: 86%
+  known failures from production           prompt v8, claude-sonnet-5         LLM judge        B: 91%  ✓ ship
+```
+
+**For data engineers** this should feel familiar: it's data quality testing for model outputs — versioned test data, automated checks, thresholds, and a CI gate.
+
+---
+
 ## Table of Contents
 
 **Basic**
@@ -24,6 +40,12 @@
 - [Regression Testing](#regression-testing)
 - [Human Evaluation](#human-evaluation)
 - [Eval-Driven Development](#eval-driven-development)
+
+**Reference**
+- [Common Pitfalls](#common-pitfalls)
+- [Cheat Sheet](#cheat-sheet)
+- [Interview Questions](#interview-questions)
+- [Further Reading](#further-reading)
 
 ---
 
@@ -345,6 +367,8 @@ Documents:
 
 ## RAGAS Framework
 
+> **Version note:** this example uses the original RAGAS column names (`question`, `answer`, `contexts`, `ground_truth`). RAGAS 0.2+ introduced `EvaluationDataset` with renamed fields (`user_input`, `response`, `retrieved_contexts`, `reference`) — check the [RAGAS docs](https://docs.ragas.io/) for the version you install, and pin it. RAGAS uses an LLM as the judge (OpenAI by default); pass your own LLM wrapper to use Claude.
+
 ```bash
 pip install ragas
 ```
@@ -544,6 +568,88 @@ def ci_eval_gate(rag_fn, eval_dataset: list[dict],
 if not ci_eval_gate(my_rag_pipeline, eval_dataset):
     raise SystemExit("Eval gate failed — not deploying")
 ```
+
+---
+
+## Common Pitfalls
+
+| Pitfall | Symptom | Fix |
+|---------|---------|-----|
+| No eval set until something breaks | Every change is a gamble; regressions found by users | Start with 20–50 real examples on day one and grow the set from production failures |
+| Synthetic-only test data | High scores, poor real-world performance | Sample real (anonymized) inputs; add synthetic cases only for coverage gaps |
+| An LLM judge with a vague rubric ("rate 1–10") | Noisy, inflated scores that don't track quality | Specific, binary or low-cardinality criteria; ask for reasoning before the verdict; validate the judge against human labels |
+| Judging with the same model and prompt you're testing | The judge shares the system's blind spots | A different or stronger judge model, and a separate grading prompt |
+| Overfitting prompts to the eval set | Scores go up, production quality doesn't | Keep a held-out test split you don't look at while iterating |
+| Reporting one aggregate number | Improvements in one area hide regressions in another | Slice results by category (question type, customer, difficulty) |
+| Single run per case | Random variation mistaken for improvement | Run several trials; look at variance and confidence intervals |
+| Evaluating only the final answer in RAG or agents | Can't tell whether retrieval or generation failed | Score each stage: retrieval recall, faithfulness, tool-call correctness, final answer |
+| Evals that nobody runs | Stale scores | Run in CI on every prompt, model, or retrieval change; block merges on regressions |
+
+---
+
+## Cheat Sheet
+
+**Choose the grader**
+
+| Output type | Best grader |
+|-------------|-------------|
+| Classification / extraction with known answers | Exact match, F1, accuracy per field |
+| JSON, SQL, code | Code checks: parses, schema validates, SQL runs, tests pass, result matches |
+| Grounded answers (RAG) | Faithfulness / groundedness judge + retrieval recall@k |
+| Open-ended text (summaries, explanations) | LLM judge with a specific rubric, calibrated on human labels |
+| Safety / tone / policy | LLM judge with explicit criteria + human spot checks |
+| Agents | Task success on the end state + trajectory review (tools, steps, cost) |
+
+**LLM-judge prompt pattern**
+
+```text
+You are grading an answer about our data platform.
+
+<question>{question}</question>
+<reference>{reference_answer}</reference>
+<answer>{answer}</answer>
+
+Criteria:
+1. Correct: agrees with the reference on every fact that matters.
+2. Grounded: makes no claims absent from the reference.
+3. Complete: covers everything the question asks.
+
+Think through each criterion, then return JSON:
+{"correct": true/false, "grounded": true/false, "complete": true/false, "reason": "<one sentence>"}
+```
+
+**Eval dataset record:** `id` · `input` · `expected` (answer, facts, or rubric) · `category` · `source` (production, synthetic, bug report) · `difficulty`
+
+**Workflow:** collect cases → define graders → baseline score → change one thing → re-run → compare per slice → ship only if better without regressions → add new production failures to the set
+
+---
+
+## Interview Questions
+
+**Q: Why can't you test LLM applications with ordinary unit tests alone?**
+A: Outputs are non-deterministic and often open-ended, so there's usually no single correct string to assert. Unit tests still help for deterministic parts — parsing, validation, tool code, output format — but quality has to be *measured* over a representative set of inputs with scoring methods that tolerate valid variation (rubrics, LLM judges, semantic checks), and tracked as a rate over time.
+
+**Q: What is LLM-as-a-judge, and how do you make it reliable?**
+A: Using an LLM to grade another model's outputs against criteria. To make it reliable: use specific, preferably binary criteria rather than 1–10 scales; give reference answers where possible; ask for reasoning before the verdict; use structured output; check position bias when comparing two answers (swap the order); and — most importantly — validate the judge against a set of human-labelled examples and measure agreement before trusting it.
+
+**Q: How would you evaluate a RAG system?**
+A: Separate the stages. For retrieval: a labelled set of questions with their relevant chunks, measuring recall@k and MRR. For generation: faithfulness (are claims supported by the retrieved context?), answer relevance, and correctness against reference answers. End to end: success rate on realistic questions, including ones that *shouldn't* be answered. Frameworks like RAGAS automate parts of this, and the metrics tell you whether to fix retrieval or the prompt.
+
+**Q: How do you build an eval dataset when you don't have one?**
+A: Start small and real: collect 20–50 actual user questions or inputs (from logs, tickets, or stakeholders), write expected answers or grading criteria with domain experts, and cover important categories and known edge cases. Add synthetic cases to fill gaps, and keep adding every production failure as a new case. Version the dataset, and keep a held-out split for final checks.
+
+**Q: What is eval-driven development?**
+A: Writing the evals before changing the system — like test-driven development for LLM apps. Define what "good" means for the task, measure the baseline, then iterate on prompts, retrieval, or models, and accept a change only when the eval scores improve without regressions in any important slice. It turns prompt engineering from guesswork into measurable engineering.
+
+---
+
+## Further Reading
+
+- [Anthropic: Define success criteria and build evaluations](https://docs.claude.com/en/docs/test-and-evaluate/develop-tests)
+- [OpenAI Evals](https://platform.openai.com/docs/guides/evals)
+- [RAGAS](https://docs.ragas.io/) · [DeepEval](https://deepeval.com/docs/getting-started) · [promptfoo](https://www.promptfoo.dev/docs/intro/) — eval frameworks
+- [Hamel Husain: Your AI product needs evals](https://hamel.dev/blog/posts/evals/) — a practical guide to building evals
+- *Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena* — Zheng et al., 2023 (judge biases and reliability)
 
 ---
 
