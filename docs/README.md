@@ -1,0 +1,179 @@
+# Data Engineering Bible
+
+A comprehensive reference for data engineers — from first query to production pipelines.
+Each guide follows a **Basic → Intermediate → Advanced** progression with real, working code examples.
+
+---
+
+## Reference Guides
+
+### Foundations
+
+| Guide | What you'll learn |
+|-------|------------------|
+| [SQL Reference](sql-reference.md) | SELECT, filtering, joins, aggregates, CTEs, window functions, indexes, transactions |
+| [Python for DE](python-reference.md) | Data types, OOP, generators, decorators, pandas, APIs, DE patterns |
+| [Linux & Bash](linux-bash.md) | Filesystem, text processing, bash scripting, cron, SSH, DE workflows |
+| [Git for DE](git-for-de.md) | Branching, merging, dbt CI/CD, git hooks, team workflows |
+| [Cloud Storage](cloud-storage.md) | S3, GCS, ADLS Gen2, medallion layout, partitioning, IAM, Python SDKs |
+
+### Processing & Compute
+
+| Guide | What you'll learn |
+|-------|------------------|
+| [PySpark Reference](pyspark-reference.md) | DataFrames, transformations, window functions, UDFs, streaming, optimization |
+| [Docker for DE](docker-reference.md) | Images, Dockerfile, volumes, networking, Docker Compose, Airflow/Spark in Docker |
+| [Databricks](databricks-reference.md) | Delta Lake, Auto Loader, DLT, Unity Catalog, Workflows, Delta vs Iceberg vs Hudi |
+
+### Orchestration & Streaming
+
+| Guide | What you'll learn |
+|-------|------------------|
+| [Apache Airflow](airflow-reference.md) | DAGs, operators, XComs, sensors, TaskFlow API, dynamic DAGs, CI/CD |
+| [Apache Kafka](kafka-reference.md) | Topics, producers, consumers, Schema Registry, Kafka Connect, DLQ patterns |
+
+### Storage & Transformation
+
+| Guide | What you'll learn |
+|-------|------------------|
+| [Snowflake Reference](snowflake-reference.md) | Architecture, virtual warehouses, semi-structured data, streams & tasks, RBAC |
+| [dbt Reference](dbt-reference.md) | Models, materializations, tests, macros, incremental models, snapshots, CI/CD |
+
+### Quality & Observability
+
+| Guide | What you'll learn |
+|-------|------------------|
+| [Data Quality](data-quality.md) | SQL checks, Great Expectations, dbt tests, anomaly detection, data contracts, alerting |
+
+### Conceptual
+
+| Guide | What you'll learn |
+|-------|------------------|
+| [DE Concepts](de-concepts.md) | OLTP/OLAP, batch vs streaming, lakehouse, medallion architecture, file formats, ETL/ELT |
+
+---
+
+## Learning Paths
+
+### Path 1: Complete beginner → job-ready
+
+1. [DE Concepts](de-concepts.md) — understand the landscape
+2. [SQL Reference](sql-reference.md) — the universal language of data
+3. [Python for DE](python-reference.md) — scripting and automation
+4. [Linux & Bash](linux-bash.md) — work in production environments
+5. [Git for DE](git-for-de.md) — collaborate and ship safely
+6. [Cloud Storage](cloud-storage.md) — store and retrieve data at scale
+7. [Docker for DE](docker-reference.md) — package and run anything
+
+### Path 2: Warehouse & transformation focus
+
+1. [SQL Reference](sql-reference.md)
+2. [Snowflake Reference](snowflake-reference.md)
+3. [dbt Reference](dbt-reference.md)
+4. [Data Quality](data-quality.md)
+5. [Git for DE](git-for-de.md) — dbt CI/CD section
+
+### Path 3: Spark & big data focus
+
+1. [DE Concepts](de-concepts.md)
+2. [PySpark Reference](pyspark-reference.md)
+3. [Databricks](databricks-reference.md)
+4. [Cloud Storage](cloud-storage.md)
+5. [Apache Kafka](kafka-reference.md)
+
+### Path 4: Streaming & real-time
+
+1. [DE Concepts](de-concepts.md) — streaming section
+2. [Apache Kafka](kafka-reference.md)
+3. [PySpark Reference](pyspark-reference.md) — Structured Streaming section
+4. [Databricks](databricks-reference.md) — Auto Loader and DLT sections
+5. [Data Quality](data-quality.md) — DQ in streaming pipelines
+
+---
+
+## Quick Reference
+
+### When should I use what?
+
+| Scenario | Tool |
+|----------|------|
+| Ad-hoc data exploration | SQL |
+| Scheduled batch pipeline | Airflow + PySpark or dbt |
+| Real-time event processing | Kafka + PySpark Structured Streaming |
+| Cloud data warehouse | Snowflake + dbt |
+| Delta Lake / Lakehouse | Databricks |
+| Containerized pipeline | Docker Compose |
+| CI/CD for transformations | dbt + GitHub Actions |
+| Data quality enforcement | dbt tests + Great Expectations |
+
+### File format cheat sheet
+
+| Format | Use when |
+|--------|----------|
+| **Parquet** | Columnar analytics, Spark, large-scale reads |
+| **Avro** | Kafka messages, schema evolution, row-based streaming |
+| **Delta** | Lakehouse tables with ACID, time travel, MERGE |
+| **JSON** | Raw landing zone, semi-structured, API payloads |
+| **CSV** | External hand-offs, small seeds, human-readable exports |
+| **ORC** | Hive/Hadoop ecosystems (prefer Parquet elsewhere) |
+
+### Materializations comparison
+
+| Type | When to use |
+|------|-------------|
+| `view` | Lightweight, always fresh, no storage cost |
+| `table` | Expensive query that many models read |
+| `incremental` | Large tables where only new/changed rows matter |
+| `ephemeral` | Staging logic used once, not queried directly |
+
+### Delivery guarantees
+
+| Guarantee | Meaning |
+|-----------|---------|
+| At-most-once | May lose messages, never duplicate |
+| At-least-once | May duplicate, never lose |
+| Exactly-once | No duplicates, no loss (hardest to achieve) |
+
+---
+
+## Concepts at a Glance
+
+### Medallion Architecture
+
+```
+Bronze (raw)      → Silver (cleaned, conformed)      → Gold (aggregated, business-ready)
+Exact copy          Deduped, typed, validated           Fact/dim tables, aggregates, KPIs
+of source data      Joined where needed                 Consumed by BI / ML / APIs
+```
+
+### Data Warehouse vs Data Lake vs Lakehouse
+
+| | Data Warehouse | Data Lake | Lakehouse |
+|-|----------------|-----------|-----------|
+| **Storage** | Proprietary (Snowflake, BigQuery) | Object storage (S3, GCS, ADLS) | Object storage |
+| **Format** | Vendor-specific | Any (Parquet, CSV, JSON…) | Open (Delta, Iceberg, Hudi) |
+| **Schema** | Schema-on-write | Schema-on-read | Both |
+| **ACID** | Yes | No | Yes (with Delta/Iceberg) |
+| **Cost** | Higher compute | Lower storage | Balanced |
+| **Examples** | Snowflake, Redshift | S3 + Glue | Databricks, Delta Lake |
+
+### ETL vs ELT
+
+```
+ETL (traditional):  Extract → Transform → Load      (transform before loading)
+ELT (modern):       Extract → Load → Transform      (load raw, transform in warehouse)
+```
+
+ELT is dominant today because cloud warehouses are cheap and powerful enough to handle transforms at scale.
+
+---
+
+## Resources
+
+- [dbt Documentation](https://docs.getdbt.com)
+- [Apache Airflow Documentation](https://airflow.apache.org/docs/)
+- [Apache Kafka Documentation](https://kafka.apache.org/documentation/)
+- [Databricks Documentation](https://docs.databricks.com)
+- [Snowflake Documentation](https://docs.snowflake.com)
+- [PySpark API Reference](https://spark.apache.org/docs/latest/api/python/)
+- [Great Expectations Documentation](https://docs.greatexpectations.io)
