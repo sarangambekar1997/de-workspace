@@ -7,6 +7,26 @@
 
 ---
 
+## Plain English: What Is Object Storage and Why Is It the Center of Every Data Platform?
+
+**The problem:** Databases are expensive per gigabyte and don't scale to petabytes of raw logs, events, and exports. Local disks fill up, fail, and can't be shared by a hundred Spark workers at once.
+
+**Object storage is the fix:** S3 (AWS), GCS (Google), and ADLS (Azure) store files ("objects") in "buckets" — effectively unlimited, extremely durable, and cheap (a few cents per GB per month). Every engine can read from it: Spark, Snowflake, Databricks, Athena, BigQuery, DuckDB, pandas.
+
+```
+                    ┌─────────────────────────────┐
+  Ingestion  ─────→ │   s3://company-data-lake/   │ ─────→  Spark / Databricks
+  (Kafka, Airbyte,  │     bronze/  silver/  gold/ │ ─────→  Snowflake / BigQuery (external tables)
+   API scripts)     │   Parquet · Iceberg · Delta │ ─────→  Athena / Trino / DuckDB
+                    └─────────────────────────────┘
+                     storage is separate from compute:
+                     scale (and pay for) each independently
+```
+
+**The catch:** it's not a real filesystem. There are no folders, only key names with `/` in them; renames are copy + delete; and every request costs a little. How you *lay out* files (partitioning, file sizes, formats) decides whether queries take seconds or hours — which is what most of this guide is about.
+
+---
+
 ## Table of Contents
 
 **Basics**
@@ -25,6 +45,12 @@
 - [Performance & Cost Optimization](#performance--cost-optimization)
 - [Lifecycle Policies](#lifecycle-policies)
 - [Storage in Spark & Databricks](#storage-in-spark--databricks)
+
+**Reference**
+- [Common Pitfalls](#common-pitfalls)
+- [Cheat Sheet](#cheat-sheet)
+- [Interview Questions](#interview-questions)
+- [Further Reading](#further-reading)
 
 ---
 
@@ -477,9 +503,9 @@ Cost saver: use partition discovery over manual listing
 from boto3.s3.transfer import TransferConfig
 
 config = TransferConfig(
-    multipart_threshold=1024 * 25,   # 25 MB
+    multipart_threshold=25 * 1024 * 1024,   # 25 MB
     max_concurrency=10,
-    multipart_chunksize=1024 * 25,
+    multipart_chunksize=25 * 1024 * 1024,
     use_threads=True,
 )
 
@@ -551,7 +577,8 @@ df = spark.read \
 from datetime import date, timedelta
 dates = [(date(2024,3,1) + timedelta(d)).strftime("%Y-%m-%d") for d in range(31)]
 paths = [f"s3://bucket/orders/order_date={d}/" for d in dates]
-df = spark.read.parquet(*paths)
+# basePath keeps order_date as a column — without it Spark drops the partition column
+df = spark.read.option("basePath", "s3://bucket/orders/").parquet(*paths)
 
 # Write with dynamic partition overwrite
 spark.conf.set("spark.sql.sources.partitionOverwriteMode", "dynamic")
@@ -560,6 +587,90 @@ df.write \
     .partitionBy("order_date") \
     .parquet("s3://my-bucket/silver/orders/")
 ```
+
+---
+
+## Common Pitfalls
+
+| Pitfall | Symptom | Fix |
+|---------|---------|-----|
+| The small file problem (thousands of KB-sized files) | Slow queries, slow listings, high request costs | Target 128 MB–1 GB files; `coalesce` before writing; compact regularly (`OPTIMIZE`, Iceberg `rewrite_data_files`) |
+| Partitioning on a high-cardinality column (`user_id`) | Millions of directories, each with a tiny file | Partition on date (and maybe one low-cardinality column); cluster/Z-order on the rest |
+| Long-lived access keys in code or on laptops | Leaked keys, unauthorized access | IAM roles / instance profiles / workload identity; short-lived credentials only |
+| A bucket left public by accident | Data breach headlines | Block Public Access at the account level; audit with AWS Config / Security Hub |
+| `mode("overwrite")` without dynamic partition overwrite | One day's rerun deletes the whole table | `partitionOverwriteMode=dynamic`, or use a table format (Delta/Iceberg) with `replaceWhere` / `MERGE` |
+| Reading explicit partition paths without `basePath` | Partition column missing from the DataFrame | `spark.read.option("basePath", root).parquet(*paths)` |
+| Treating a "rename" as atomic (e.g. write to `_tmp/` then move) | Readers see half-moved data; large moves are slow | Use a table format — commits are atomic metadata swaps |
+| No lifecycle rules | Storage bill grows forever with temp files and old raw data | Lifecycle transitions (IA → Glacier) and expiration for `tmp/` |
+| Cross-region reads/writes | Surprise data-transfer bill; slower jobs | Keep compute in the same region as the bucket |
+| Listing huge prefixes to find new files | Slow and expensive at millions of objects | Event notifications (S3 → SQS), Auto Loader, or table-format metadata |
+| Still scripting with `gsutil` | Slower transfers; the tool is legacy | Use `gcloud storage` (same verbs: `ls`, `cp`, `rsync`, `rm`) |
+
+---
+
+## Cheat Sheet
+
+**Cross-cloud equivalents**
+
+| Concept | AWS | GCP | Azure |
+|---------|-----|-----|-------|
+| Object store | S3 | Cloud Storage (GCS) | Blob Storage / ADLS Gen2 |
+| URI (Spark) | `s3://bucket/key` (`s3a://` on OSS Hadoop) | `gs://bucket/key` | `abfss://container@account.dfs.core.windows.net/path` |
+| CLI | `aws s3` | `gcloud storage` (legacy `gsutil`) | `az storage` / `azcopy` |
+| Python SDK | `boto3` | `google-cloud-storage` | `azure-storage-blob` / `azure-storage-file-datalake` |
+| pandas/fsspec backend | `s3fs` | `gcsfs` | `adlfs` |
+| Infrequent tier | Standard-IA | Nearline | Cool |
+| Archive tier | Glacier / Deep Archive | Coldline / Archive | Cold / Archive |
+| Machine identity | IAM role / instance profile | Service account / workload identity | Managed identity |
+| Time-limited link | Presigned URL | Signed URL | SAS token |
+| New-file events | S3 Event Notifications → SQS/SNS/EventBridge | Pub/Sub notifications | Event Grid |
+| SQL over files | Athena | BigQuery external tables | Synapse serverless SQL |
+
+**Everyday commands**
+
+| Task | Command |
+|------|---------|
+| List with sizes | `aws s3 ls s3://b/prefix/ --recursive --human-readable --summarize` |
+| Copy / sync | `aws s3 cp f s3://b/k` · `aws s3 sync ./dir s3://b/prefix/` |
+| GCS equivalents | `gcloud storage ls -l gs://b/p/` · `gcloud storage cp` · `gcloud storage rsync -r` |
+| Object metadata | `aws s3api head-object --bucket b --key k` |
+| Share temporarily | `aws s3 presign s3://b/k --expires-in 3600` |
+| pandas read | `pd.read_parquet("s3://b/k.parquet", columns=[...])` |
+| Spark: overwrite only touched partitions | `spark.conf.set("spark.sql.sources.partitionOverwriteMode", "dynamic")` |
+
+**Layout rules of thumb:** Hive-style `col=value/` partitions · date first · 128 MB–1 GB files · Parquet (or Iceberg/Delta) everywhere after Bronze · one bucket or prefix per layer, so IAM can differ per layer
+
+---
+
+## Interview Questions
+
+**Q: How is object storage different from a filesystem, and why does it matter for data engineering?**
+A: Object storage is a flat key → blob store: "folders" are just key prefixes, there's no atomic rename or directory move, and every operation is an HTTP request with latency and a cost. That means renames are copy + delete, listing millions of keys is slow, and the classic "write to a temp dir then rename" commit pattern isn't safe. Table formats like Iceberg and Delta exist largely to work around this, using atomic metadata commits instead of renames.
+
+**Q: What is the small file problem and how do you fix it?**
+A: When a dataset is spread across thousands of tiny files, engines spend more time opening files, listing, and reading footers than reading data, and request costs go up. Causes include over-partitioning, streaming micro-batches, and high-parallelism writes. Fixes: partition by a coarser key, `coalesce`/`repartition` before writing, and compact regularly (Delta `OPTIMIZE`, Iceberg `rewrite_data_files`, or a scheduled compaction job). Aim for roughly 128 MB–1 GB per file.
+
+**Q: How would you design the storage layout for a new data lake?**
+A: Separate zones: a landing/Bronze zone for raw data exactly as received (immutable, partitioned by ingestion date), Silver for cleaned and typed data (Parquet or a table format, partitioned by the business date), and Gold for modeled, business-ready tables. Use separate buckets or prefixes per zone so IAM can grant pipelines write access only to their own layer and BI tools read-only access to Gold. Add lifecycle rules, versioning on landing, encryption, Block Public Access, and a naming convention (`source/table/dt=YYYY-MM-DD/`).
+
+**Q: How do you give a Spark job running on AWS access to S3 securely?**
+A: Attach an IAM role to the compute (EMR instance profile, an EKS service account through IRSA, or a Databricks instance profile / Unity Catalog storage credential) with least-privilege permissions on specific bucket prefixes. No access keys in code or config. Add bucket policies that restrict access to the expected roles or VPC endpoints, and turn on encryption (SSE-KMS if you need key-level audit).
+
+**Q: How do you reduce cloud storage costs?**
+A: Lifecycle policies that move old data to infrequent-access or archive tiers and expire temp data; Intelligent-Tiering when access patterns are unknown; compression and columnar formats (Parquet with ZSTD is often 5–10× smaller than CSV); compaction to reduce request counts; keeping compute in the same region to avoid transfer charges; and cleaning up old table-format snapshots and orphan files (`VACUUM`, `expire_snapshots`).
+
+**Q: A downstream team says yesterday's partition is missing rows. How do you investigate?**
+A: Check whether the files landed (`aws s3 ls` for that partition: count and sizes), then whether the job that wrote them succeeded and how many rows it reported. Look for an `overwrite` that replaced the partition with partial data, a late-arriving upstream file, or a filter bug. With Delta or Iceberg, the table history and time travel show exactly which commit changed the partition, and let you compare row counts across versions.
+
+---
+
+## Further Reading
+
+- [Amazon S3 user guide](https://docs.aws.amazon.com/AmazonS3/latest/userguide/Welcome.html) — especially the performance guidelines and storage classes pages
+- [Google Cloud Storage documentation](https://cloud.google.com/storage/docs)
+- [Azure Data Lake Storage Gen2 documentation](https://learn.microsoft.com/azure/storage/blobs/data-lake-storage-introduction)
+- [boto3 S3 reference](https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/s3.html)
+- [fsspec](https://filesystem-spec.readthedocs.io/) — the layer that lets pandas, Dask, and DuckDB read `s3://`, `gs://`, and `abfs://` paths
 
 ---
 

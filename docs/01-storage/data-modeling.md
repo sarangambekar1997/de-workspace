@@ -7,6 +7,27 @@
 
 ---
 
+## Plain English: What Is Data Modeling?
+
+**The problem:** Source systems store data the way the *application* needs it — dozens of normalized tables, cryptic column names, status codes, and history overwritten on every update. Analysts asking "what was revenue by region last quarter?" would need a 12-table join and would still get different answers from one another.
+
+**Data modeling is the fix:** you decide, on purpose, how data is shaped for *analysis*. The most common answer is a **star schema**: a central **fact** table of events you measure (orders, clicks, payments) surrounded by **dimension** tables that describe them (customer, product, date).
+
+```
+Application tables (OLTP)                 Analytics model (star schema)
+─────────────────────────                 ─────────────────────────────
+orders, order_items, customers,                    dim_date
+addresses, products, categories,                      │
+promos, payments, refunds ...      →     dim_customer ─ fct_orders ─ dim_product
+(built for fast writes)                               │
+                                                  dim_promo
+                                          (built for simple, fast reads)
+```
+
+**The two questions that drive every design:** What is the **grain** — what does one row represent? And how should **history** behave when attributes change (slowly changing dimensions)?
+
+---
+
 ## Table of Contents
 
 **Basic**
@@ -26,6 +47,11 @@
 - [Data Vault](#data-vault)
 - [Modeling for dbt](#modeling-for-dbt)
 - [Common Mistakes](#common-mistakes)
+
+**Reference**
+- [Cheat Sheet](#cheat-sheet)
+- [Interview Questions](#interview-questions)
+- [Further Reading](#further-reading)
 
 ---
 
@@ -645,7 +671,8 @@ FROM {{ ref('int_orders__enriched') }}
             e.g., "fct_order_items: one row per order line item"
 
 5. Ignoring NULL foreign keys
-   Problem: LEFT JOIN silently drops rows, metrics are wrong
+   Problem: INNER JOINs silently drop those fact rows (and LEFT JOINs show
+            NULL attributes) — metrics disagree depending on how you join
    Fix:     Use a "Unknown" or "Not Applicable" dimension row (key = -1)
             so NULLs never appear in fact table FK columns
 
@@ -662,6 +689,75 @@ FROM {{ ref('int_orders__enriched') }}
    Problem: slow joins, no pre-computed date attributes
    Fix:     Use INTEGER date keys (YYYYMMDD) and a pre-populated dim_date
 ```
+
+---
+
+## Cheat Sheet
+
+| Decision | Rule of thumb |
+|----------|---------------|
+| First step for any fact table | Write down the grain: "one row per ___" |
+| Measures (amounts, counts, durations) | Fact tables |
+| Descriptive attributes (names, categories, regions) | Dimension tables |
+| Join keys in facts | Surrogate keys, not source-system natural keys |
+| Missing dimension value | Point to an "Unknown" row (key `-1`), never leave the FK `NULL` |
+| Attribute change, history irrelevant or a typo fix | SCD Type 1 (overwrite) |
+| Attribute change that affects historical reporting | SCD Type 2 (new row + `valid_from` / `valid_to` / `is_current`) |
+| Only need "previous value" | SCD Type 3 (extra column) |
+| Attribute that must never change | SCD Type 0 |
+| Dashboards / BI audience | Star schema, or One Big Table in Gold |
+| Many sources, heavy audit requirements | Data Vault in the raw/integration layer, star schema on top |
+| dbt layering | `stg_` (1:1 with source) → `int_` (logic) → `fct_` / `dim_` (marts) |
+
+**Fact table types:** transaction (one row per event) · periodic snapshot (one row per entity per period) · accumulating snapshot (one row per process, updated at milestones) · factless (events with no measures, e.g. attendance)
+
+**Dimension patterns:** conformed (shared across facts) · role-playing (`dim_date` as order date *and* ship date) · junk (bundle of low-cardinality flags) · degenerate (an ID kept in the fact with no dimension, e.g. `order_number`) · outrigger (dimension that references another dimension)
+
+**Point-in-time join for SCD Type 2:**
+```sql
+JOIN dim_customer c
+  ON  f.customer_id = c.customer_id
+  AND f.order_ts >= c.valid_from
+  AND f.order_ts <  COALESCE(c.valid_to, '9999-12-31')
+```
+
+---
+
+## Interview Questions
+
+**Q: What is the grain of a fact table and why is it the first thing to decide?**
+A: The grain is what one row represents — "one row per order line item" or "one row per customer per day". Every other design decision follows from it: which dimensions apply, which measures are additive, and how the table can be aggregated safely. Mixing grains in one table (order-level shipping cost next to item-level price) leads to double-counting when someone sums a column.
+
+**Q: What is the difference between a star schema and a snowflake schema?**
+A: Both have fact tables at the center. In a star schema, dimensions are denormalized — `dim_product` includes category and department names directly. In a snowflake schema, dimensions are normalized into sub-dimensions (`dim_product → dim_category → dim_department`). Star schemas mean fewer joins and simpler SQL, which is why they're preferred in modern columnar warehouses where storage is cheap; snowflake schemas save a little storage and reduce update anomalies.
+
+**Q: Explain SCD Type 1, 2, and 3. When would you use Type 2?**
+A: Type 1 overwrites the value and keeps no history. Type 2 closes the current row (sets `valid_to`, `is_current = false`) and inserts a new row with a new surrogate key, preserving full history. Type 3 keeps the previous value in an extra column, giving one level of history. Use Type 2 whenever historical reports must reflect the attribute *as it was* — a customer's region or a salesperson's territory at the time of a sale — so last year's numbers don't change when someone moves.
+
+**Q: Why use surrogate keys instead of natural keys?**
+A: Natural keys come from source systems and can change, be reused, collide across sources, or be missing. Surrogate keys (integer sequences or hashes generated in the warehouse) are stable and unique, make SCD Type 2 possible (one natural key, many versions, each with its own surrogate key), and let you handle unknown members with a reserved key such as `-1`.
+
+**Q: What are additive, semi-additive, and non-additive measures?**
+A: Additive measures can be summed across every dimension (revenue, quantity). Semi-additive measures can be summed across some dimensions but not time — an account balance can be summed across accounts on one day, but not across days (take the last value or an average instead). Non-additive measures can't be summed at all — ratios and percentages; store the numerator and denominator and compute the ratio after aggregating.
+
+**Q: Star schema, One Big Table, or Data Vault — how do you choose?**
+A: A star schema is the default for analytics: flexible, understandable, and efficient. One Big Table (everything pre-joined) is great for a specific dashboard, ML features, or non-SQL users, but it duplicates data and makes history and reuse harder — it's usually built *from* a star schema in the Gold layer. Data Vault suits large enterprises with many source systems and strict audit needs, as an integration layer that absorbs change, with star schemas built on top for consumption.
+
+**Q: How would you model orders and their line items?**
+A: Two fact tables at different grains: `fct_orders` (one row per order — order total, shipping, discount) and `fct_order_items` (one row per line — product, quantity, price). Both share conformed dimensions (customer, date) and the item fact also joins to `dim_product`. Order-level amounts are not repeated on item rows; if they must be, allocate them proportionally so they sum correctly.
+
+**Q: How do you handle a fact that arrives before its dimension record (a late-arriving dimension)?**
+A: Don't drop the fact. Either point it at an "Unknown" member (key `-1`) and re-key it once the dimension arrives, or insert an "inferred" placeholder dimension row with just the natural key and update its attributes when the real record lands. Which to choose depends on how often it happens and whether reprocessing facts is cheap.
+
+---
+
+## Further Reading
+
+- *The Data Warehouse Toolkit, 3rd Edition* — Ralph Kimball & Margy Ross (Wiley). The reference for dimensional modeling.
+- [Kimball Group dimensional modeling techniques](https://www.kimballgroup.com/data-warehouse-business-intelligence-resources/kimball-techniques/dimensional-modeling-techniques/) — free one-page summaries of every pattern above
+- [dbt: How we structure our dbt projects](https://docs.getdbt.com/best-practices/how-we-structure/1-guide-overview)
+- *Building a Scalable Data Warehouse with Data Vault 2.0* — Dan Linstedt & Michael Olschimke (Morgan Kaufmann)
+- *Agile Data Warehouse Design* — Lawrence Corr. Practical techniques for gathering modeling requirements with stakeholders.
 
 ---
 

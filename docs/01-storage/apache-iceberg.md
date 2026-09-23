@@ -50,6 +50,11 @@ s3://bucket/orders/       iceberg table "orders"
 - [Iceberg vs Delta Lake vs Hudi](#iceberg-vs-delta-lake-vs-hudi)
 - [Common Mistakes](#common-mistakes)
 
+**Reference**
+- [Cheat Sheet](#cheat-sheet)
+- [Interview Questions](#interview-questions)
+- [Further Reading](#further-reading)
+
 ---
 
 ## Core Concepts
@@ -77,7 +82,9 @@ Iceberg metadata hierarchy:
 ## Setup with PySpark
 
 ```python
-# pip install pyspark apache-iceberg pyspark
+# pip install 'pyspark==3.5.*'
+# No Iceberg pip package needed — the runtime jar below is downloaded by Spark.
+# Its name must match your Spark (3.5) and Scala (2.12) versions.
 
 from pyspark.sql import SparkSession
 
@@ -126,7 +133,6 @@ spark.sql("""
     )
     USING iceberg
     PARTITIONED BY (order_date)
-    LOCATION '/tmp/iceberg-warehouse/db/orders'
     TBLPROPERTIES (
         'format-version'           = '2',
         'write.format.default'     = 'parquet',
@@ -190,8 +196,10 @@ spark.sql("ALTER TABLE local.db.orders ADD COLUMN shipping_cost DOUBLE")
 # Rename a column
 spark.sql("ALTER TABLE local.db.orders RENAME COLUMN shipping_cost TO shipping_fee")
 
-# Change a column type (only widening types: int → long, float → double)
-spark.sql("ALTER TABLE local.db.orders ALTER COLUMN amount TYPE DECIMAL(12, 2)")
+# Change a column type — only safe widenings: int → long, float → double,
+# decimal(P,S) → decimal(P+n,S). DOUBLE → DECIMAL is NOT allowed.
+spark.sql("ALTER TABLE local.db.orders ADD COLUMN quantity INT")
+spark.sql("ALTER TABLE local.db.orders ALTER COLUMN quantity TYPE BIGINT")
 
 # Drop a column (data still in files, just not exposed in schema)
 spark.sql("ALTER TABLE local.db.orders DROP COLUMN shipping_fee")
@@ -277,8 +285,8 @@ df = spark.read \
     .table("local.db.orders")
 
 df = spark.read \
-    .option("as-of-timestamp", "1710504000000") \  # milliseconds since epoch
-    .table("local.db.orders")
+    .option("as-of-timestamp", "1710504000000") \
+    .table("local.db.orders")          # as-of-timestamp is milliseconds since epoch
 
 # Rollback to a previous snapshot
 spark.sql("CALL local.system.rollback_to_snapshot('db.orders', 1234567890)")
@@ -362,23 +370,21 @@ spark.sql("""
 ```python
 # AWS Glue Catalog + S3 + Athena — no Spark cluster needed for queries
 
-# Create table via Glue (in AWS console or boto3)
-import boto3
-
-glue = boto3.client("glue", region_name="us-east-1")
-glue.create_table(
-    DatabaseName="mydb",
-    TableInput={
-        "Name": "orders",
-        "StorageDescriptor": {
-            "Location": "s3://my-bucket/iceberg/orders/",
-            "InputFormat":  "org.apache.iceberg.mr.hive.HiveIcebergInputFormat",
-            "OutputFormat": "org.apache.iceberg.mr.hive.HiveIcebergOutputFormat",
-            "SerdeInfo": {"SerializationLibrary": "org.apache.iceberg.mr.hive.HiveIcebergSerDe"},
-        },
-        "Parameters": {"table_type": "ICEBERG"},
-    }
-)
+# Create the table with Athena DDL — Athena writes the Iceberg metadata and
+# registers the table in the Glue Data Catalog in one step:
+#
+# CREATE TABLE mydb.orders (
+#     order_id    string,
+#     customer_id string,
+#     amount      double,
+#     order_date  date
+# )
+# PARTITIONED BY (day(order_date))
+# LOCATION 's3://my-bucket/iceberg/orders/'
+# TBLPROPERTIES ('table_type' = 'ICEBERG');
+#
+# Tables created by Spark with the Glue catalog (setup above) show up in Athena
+# automatically — both engines share the same Glue metadata.
 
 # Query in Athena (after table registered in Glue)
 # SELECT * FROM mydb.orders WHERE order_date >= DATE '2024-03-01'
@@ -427,14 +433,43 @@ glue.create_table(
    Problem: bucket(1000, user_id) creates 1000 files per write — too many small files
    Fix:     Start with bucket(16) or bucket(32); 128MB target file size
 
-5. Mixing Iceberg V1 and V2 features
-   Problem: V2 adds row-level deletes (needed for MERGE/DELETE/UPDATE)
-   Fix:     Always create tables with 'format-version' = '2'
+5. Creating tables as format V1
+   Problem: V1 has no row-level deletes, so MERGE/UPDATE/DELETE must rewrite whole files
+   Fix:     V2 is the default since Iceberg 1.4; set 'format-version' = '2' explicitly
+            on older engines/versions (V3 adds deletion vectors — check engine support first)
 
 6. Skipping OPTIMIZE after heavy upserts
    Problem: merge-on-read tables accumulate delete files → slower reads over time
    Fix:     Run rewrite_data_files after bulk upserts to compact
 ```
+
+---
+
+## Cheat Sheet
+
+| Task | Spark SQL |
+|------|-----------|
+| Create table | `CREATE TABLE cat.db.t (...) USING iceberg PARTITIONED BY (days(ts))` |
+| Append / overwrite partitions | `df.writeTo("cat.db.t").append()` · `.overwritePartitions()` |
+| Upsert | `MERGE INTO cat.db.t t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE SET * WHEN NOT MATCHED THEN INSERT *` |
+| Add / rename column | `ALTER TABLE t ADD COLUMN c INT` · `RENAME COLUMN a TO b` |
+| Change partitioning (no rewrite) | `ALTER TABLE t ADD PARTITION FIELD hours(ts)` · `DROP PARTITION FIELD days(ts)` |
+| Time travel | `SELECT ... FROM t VERSION AS OF <snapshot_id>` · `TIMESTAMP AS OF '2024-03-15 12:00:00'` |
+| Roll back | `CALL cat.system.rollback_to_snapshot('db.t', <id>)` |
+| List snapshots | `SELECT * FROM cat.db.t.snapshots` |
+| Files and sizes | `SELECT file_path, record_count, file_size_in_bytes FROM cat.db.t.files` |
+| Partition stats | `SELECT * FROM cat.db.t.partitions` |
+| Compact | `CALL cat.system.rewrite_data_files(table => 'db.t')` |
+| Expire snapshots | `CALL cat.system.expire_snapshots(table => 'db.t', older_than => TIMESTAMP '...', retain_last => 5)` |
+| Remove orphan files | `CALL cat.system.remove_orphan_files(table => 'db.t')` |
+| Merge-on-read for upsert-heavy tables | `ALTER TABLE t SET TBLPROPERTIES ('write.merge.mode'='merge-on-read', 'write.update.mode'='merge-on-read', 'write.delete.mode'='merge-on-read')` |
+| Branch for write-audit-publish | `ALTER TABLE t CREATE BRANCH audit` → write with `spark.wap.branch` → `CALL cat.system.fast_forward('db.t', 'main', 'audit')` |
+
+**Partition transforms:** `years` · `months` · `days` · `hours` · `bucket(N, col)` · `truncate(W, col)`
+
+**Maintenance schedule (typical):** compact daily or after big loads · expire snapshots weekly (keep enough for your time-travel SLA) · remove orphan files weekly · rewrite manifests when query planning slows down
+
+**Catalog options:** REST (Polaris, Unity Catalog, Nessie, Gravitino, and managed services) · AWS Glue · Hive Metastore · JDBC · Hadoop (local testing only)
 
 ---
 
@@ -451,6 +486,29 @@ A: Iceberg tracks columns by a stable integer ID, not by name. When you rename a
 
 **Q: What is copy-on-write vs merge-on-read?**
 A: Copy-on-write rewrites entire data files when rows are updated/deleted — reads are fast because there's only one file per row, but writes are expensive. Merge-on-read writes small delete/delta files alongside data files and merges them at read time — writes are fast, reads are slightly slower. Choose copy-on-write for read-heavy, update-infrequent tables; merge-on-read for frequent upserts.
+
+**Q: What is an Iceberg catalog and why does it matter?**
+A: The catalog maps a table name to the location of its *current* metadata file, and it's what makes commits atomic: a writer creates new metadata and then asks the catalog to swap the pointer from the old file to the new one, and that swap only succeeds if nobody else committed first (optimistic concurrency). Every engine that reads or writes the table must use the same catalog. The REST catalog spec has become the standard interface, so Spark, Trino, Flink, Snowflake, and others can all share one catalog.
+
+**Q: How does Iceberg handle two jobs writing to the same table at the same time?**
+A: Optimistic concurrency. Each writer reads the current snapshot, writes its data files, and then tries to commit new metadata based on that snapshot. If another commit landed first, the catalog rejects the swap; the writer then checks whether the two changes conflict (for example, both touched the same files or partitions). If they don't, it retries the commit on top of the new snapshot; if they do, the commit fails. Data files are never modified in place, so readers always see a consistent snapshot.
+
+**Q: What maintenance does an Iceberg table need, and what happens if you skip it?**
+A: Every write adds a snapshot plus metadata and manifest files, and streaming or small batches add many small data files. Without maintenance, storage keeps growing (old snapshots pin deleted files), query planning slows down (too many manifests), and scans slow down (small files, accumulated delete files). The fix is scheduled compaction (`rewrite_data_files`), snapshot expiration, orphan file removal, and occasional manifest rewrites. Some managed catalogs run these for you.
+
+**Q: When would you choose Iceberg over Delta Lake?**
+A: When several engines need to read and write the same tables (Spark, Trino, Flink, Snowflake, Athena, BigQuery), when you want to avoid tying storage to one vendor, or when partition evolution and hidden partitioning matter. Delta is the natural choice on Databricks, where features like Liquid Clustering and Predictive Optimization are tightly integrated. The gap is shrinking: Delta UniForm can expose Iceberg metadata, and Databricks and Snowflake both support Iceberg tables.
+
+---
+
+## Further Reading
+
+- [Apache Iceberg documentation](https://iceberg.apache.org/docs/latest/)
+- [Iceberg table spec](https://iceberg.apache.org/spec/) — how snapshots, manifests, and delete files actually work
+- [Spark procedures reference](https://iceberg.apache.org/docs/latest/spark-procedures/) — every maintenance `CALL` in one page
+- [Using Iceberg tables in Athena](https://docs.aws.amazon.com/athena/latest/ug/querying-iceberg.html)
+- [PyIceberg](https://py.iceberg.apache.org/) — read and write Iceberg from Python without Spark
+- *Apache Iceberg: The Definitive Guide* — Tomer Shiran, Jason Hughes & Alex Merced (O'Reilly)
 
 ---
 
