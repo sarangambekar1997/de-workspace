@@ -609,7 +609,7 @@ schedule='0 6 * * *'             # 6am UTC daily
 schedule=timedelta(hours=6)
 ```
 
-**Important:** in Airflow, a scheduled run's `logical_date` (called `execution_date` before Airflow 2.2) is the **start** of the data interval, not when the task runs. A daily job with `logical_date=2024-03-15` processes data for March 15 and runs on March 16. This trips up almost everyone the first time.
+**Important:** a scheduled Airflow run processes a **data interval** and runs *after* that interval ends: the daily run covering March 15 starts on March 16. In Airflow 2, the run's `logical_date` (formerly `execution_date`) is the interval *start* (March 15); Airflow 3's default cron timetable sets it to the run time instead. Read `data_interval_start` / `data_interval_end` explicitly and you're correct on both. This trips up almost everyone the first time.
 
 ---
 

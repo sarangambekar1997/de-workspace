@@ -56,11 +56,17 @@ The name "DAG" just means: tasks are connected (graph), with arrows showing dire
 
 **Advanced**
 - [Dynamic DAGs](#dynamic-dags)
-- [SubDAGs & Task Groups](#task-groups)
+- [Task Groups](#task-groups)
 - [Hooks](#hooks)
 - [Custom Operators](#custom-operators)
 - [Backfilling & Catchup](#backfilling--catchup)
 - [Best Practices](#best-practices)
+
+**Reference**
+- [Common Pitfalls](#common-pitfalls)
+- [Cheat Sheet](#cheat-sheet)
+- [Interview Questions](#interview-questions)
+- [Further Reading](#further-reading)
 
 ---
 
@@ -95,10 +101,26 @@ Workers      — processes that execute tasks (CeleryExecutor only)
 
 | Executor | Runs tasks | Use when |
 |----------|-----------|----------|
-| `SequentialExecutor` | One at a time, same process | Dev/testing only |
-| `LocalExecutor` | Parallel, same machine | Small to medium workloads |
+| `SequentialExecutor` | One at a time, same process | Dev/testing only (removed in Airflow 3) |
+| `LocalExecutor` | Parallel, same machine | Small to medium workloads (Airflow 3 default) |
 | `CeleryExecutor` | Distributed across workers | Production, large scale |
 | `KubernetesExecutor` | Each task in a K8s pod | Cloud-native, isolated dependencies |
+
+### Airflow 2 vs Airflow 3
+
+Airflow 3.0 (April 2025) is a major release. Examples in this guide use syntax that works on **2.4+ and 3.x**; the differences that matter most:
+
+| Area | Airflow 2.x | Airflow 3.x |
+|------|-------------|-------------|
+| Schedule argument | `schedule_interval=` (deprecated from 2.4) | `schedule=` only |
+| `catchup` default | `True` | `False` |
+| Cron schedules | `logical_date` = start of the data interval (run happens after it ends) | `logical_date` = the run time (`CronTriggerTimetable`); use `CronDataIntervalTimetable` for the old behavior |
+| DAG authoring imports | `airflow.decorators`, `airflow.operators.*` | `airflow.sdk` (`dag`, `task`, `DAG`) and `airflow.providers.standard.*`; old paths are deprecated |
+| Web UI / API | Flask webserver | New React UI served by `airflow api-server` |
+| Task ↔ metadata DB | Tasks talk to the DB directly | Tasks go through the Task Execution API (no direct DB access) |
+| Backfill | `airflow dags backfill` (client-side) | `airflow backfill create` (run by the scheduler, visible in the UI) |
+| Removed | — | SubDAGs, SLAs (replaced by deadline alerts), `SequentialExecutor`, `execution_date` |
+| Data-aware scheduling | Datasets | Assets (`@asset`, `schedule=[Asset(...)]`) |
 
 ---
 
@@ -146,7 +168,7 @@ with DAG(
     description="Load and transform daily orders",
     default_args=default_args,
     start_date=datetime(2024, 1, 1),
-    schedule_interval="0 2 * * *",   # 2am UTC daily
+    schedule="0 2 * * *",            # 2am UTC daily
     catchup=False,                   # don't backfill missed runs
     tags=["orders", "daily"],
 ) as dag:
@@ -338,30 +360,32 @@ start >> [task_a, task_b] >> end
 
 ```python
 # Cron expressions
-schedule_interval="0 2 * * *"     # 2am daily
-schedule_interval="0 * * * *"     # hourly
-schedule_interval="0 2 * * 1"     # 2am every Monday
-schedule_interval="0 2 1 * *"     # 2am on the 1st of each month
-schedule_interval="*/15 * * * *"  # every 15 minutes
+schedule="0 2 * * *"              # 2am daily
+schedule="0 * * * *"              # hourly
+schedule="0 2 * * 1"              # 2am every Monday
+schedule="0 2 1 * *"              # 2am on the 1st of each month
+schedule="*/15 * * * *"           # every 15 minutes
 
 # Preset strings
-schedule_interval="@daily"        # midnight daily
-schedule_interval="@hourly"
-schedule_interval="@weekly"
-schedule_interval="@monthly"
-schedule_interval="@once"         # run once only
+schedule="@daily"                 # midnight daily
+schedule="@hourly"
+schedule="@weekly"
+schedule="@monthly"
+schedule="@once"                  # run once only
 
 # timedelta
 from datetime import timedelta
-schedule_interval=timedelta(hours=6)
+schedule=timedelta(hours=6)
 
 # Data interval — CRITICAL concept
 # A DAG with schedule "@daily" and start_date=2024-01-01:
-# Run 1: logical_date=2024-01-01, RUNS at 2024-01-02 00:00 (after the interval ends)
-# Run 2: logical_date=2024-01-02, RUNS at 2024-01-03 00:00
+# Run 1: data interval 2024-01-01 → 2024-01-02, RUNS at 2024-01-02 00:00 (after the interval ends)
+# Run 2: data interval 2024-01-02 → 2024-01-03, RUNS at 2024-01-03 00:00
 #
-# logical_date = start of the data interval, NOT when the job executes
-# This means: to process data for yesterday, use {{ ds }} (not today's date)
+# Airflow 2 (and interval timetables in 3): logical_date = start of the data interval,
+#   so {{ ds }} is "yesterday" relative to when the run starts.
+# Airflow 3 cron schedules default to CronTriggerTimetable: logical_date = run time.
+# Portable choice: read {{ data_interval_start }} / {{ data_interval_end }} explicitly.
 ```
 
 ### Catchup
@@ -370,14 +394,14 @@ schedule_interval=timedelta(hours=6)
 with DAG(
     dag_id="my_dag",
     start_date=datetime(2024, 1, 1),
-    schedule_interval="@daily",
+    schedule="@daily",
     catchup=True,   # True = create runs for all missed intervals since start_date
                     # False = only run from now forward
 ):
     ...
 
 # Global default in airflow.cfg:
-# catchup_by_default = False   ← recommended
+# catchup_by_default = False   ← recommended (the default in Airflow 3)
 ```
 
 ---
@@ -549,7 +573,7 @@ from datetime import datetime
 
 @dag(
     dag_id="orders_pipeline_taskflow",
-    schedule_interval="@daily",
+    schedule="@daily",
     start_date=datetime(2024, 1, 1),
     catchup=False,
 )
@@ -600,7 +624,7 @@ from datetime import datetime
 
 TABLES = ["orders", "customers", "products", "inventory"]
 
-@dag(schedule_interval="@daily", start_date=datetime(2024, 1, 1), catchup=False)
+@dag(schedule="@daily", start_date=datetime(2024, 1, 1), catchup=False)
 def dynamic_table_load():
 
     @task
@@ -755,18 +779,22 @@ with DAG(
 ### Manual backfill via CLI
 
 ```bash
-# Backfill a date range
+# Airflow 3 — the scheduler runs the backfill; progress is visible in the UI
+airflow backfill create \
+  --dag-id orders_daily_load \
+  --from-date 2024-01-01 \
+  --to-date 2024-01-31 \
+  --max-active-runs 2
+
+# Airflow 3 — preview which runs would be created
+airflow backfill create --dag-id orders_daily_load \
+  --from-date 2024-01-01 --to-date 2024-01-31 --dry-run
+
+# Airflow 2
 airflow dags backfill \
   --dag-id orders_daily_load \
   --start-date 2024-01-01 \
   --end-date 2024-01-31
-
-# Dry run — show what would be executed
-airflow dags backfill \
-  --dag-id orders_daily_load \
-  --start-date 2024-01-01 \
-  --end-date 2024-01-31 \
-  --dry-run
 ```
 
 > Every task must be **idempotent** for backfilling to be safe. Running a task twice for the same date should produce the same result — not double the data.
@@ -822,11 +850,12 @@ def extract(ds=None):
 from airflow.models import Pool
 # In Admin > Pools: create "snowflake_pool" with 10 slots
 
-heavy_query = SnowflakeOperator(
+heavy_query = SQLExecuteQueryOperator(   # replaces the deprecated SnowflakeOperator
     task_id="heavy_query",
+    conn_id="snowflake_default",
     pool="snowflake_pool",    # max 10 Snowflake tasks at once
     pool_slots=2,             # this task uses 2 slots
-    ...
+    sql="CALL refresh_daily_aggregates()",
 )
 
 # Set reasonable timeouts
@@ -861,13 +890,85 @@ default_args = {
 
 ---
 
+## Common Pitfalls
+
+| Pitfall | Symptom | Fix |
+|---------|---------|-----|
+| Heavy work at the top level of a DAG file (DB queries, API calls, big imports) | Slow scheduler, DAG import timeouts, a query every 30 seconds on every parse | Top-level code only *defines* the DAG; do work inside tasks |
+| `start_date=datetime.now()` | DAG never runs, or runs unpredictably | A fixed date in the past |
+| Using `datetime.now()` inside tasks instead of the run's interval | Backfills and reruns process the wrong day | Use `data_interval_start` / `data_interval_end` (or `{{ ds }}`) from the context |
+| Non-idempotent tasks (plain `INSERT`) | Retries and backfills create duplicates | Overwrite the partition, or `DELETE` + `INSERT` / `MERGE` for that interval |
+| Passing data through XCom | Metadata DB bloats; tasks slow down | Write data to S3 or a table; pass only the path or key |
+| Airflow workers doing the heavy compute | Workers run out of memory; one pandas job starves the rest | Push work down to Spark, the warehouse, dbt, or a Kubernetes pod; Airflow orchestrates |
+| Many long-waiting sensors in `poke` mode | Worker slots all taken by sensors doing nothing | `mode="reschedule"` or deferrable operators (triggerer) |
+| `catchup=True` by accident with an old `start_date` | Hundreds of runs appear the moment the DAG is unpaused | `catchup=False` unless you really want the history; `max_active_runs` to throttle |
+| No `execution_timeout` | A hung task blocks its pool slot forever | Set `execution_timeout` on every task (via `default_args`) |
+| Secrets in Variables, DAG code, or Git | Leaked credentials | Connections with a secrets backend (Vault, AWS Secrets Manager, GCP Secret Manager) |
+| One giant `PythonOperator` doing extract, transform, and load | Can't retry just the failed step; no visibility | Split into atomic tasks that can each be retried |
+| Generating thousands of tasks with Python loops | Slow parsing; unreadable graph | Dynamic task mapping (`.expand()`) decided at runtime |
+| Relying on implicit timezones | Runs at the wrong local time around DST changes | Timezone-aware `start_date` (`pendulum.datetime(..., tz="Europe/London")`) |
+
+---
+
+## Cheat Sheet
+
+**DAG skeleton (TaskFlow, works on 2.4+ and 3.x)**
+
+```python
+import pendulum
+from datetime import timedelta
+from airflow.decorators import dag, task          # Airflow 3: from airflow.sdk import dag, task
+
+@dag(
+    schedule="0 2 * * *",
+    start_date=pendulum.datetime(2024, 1, 1, tz="UTC"),
+    catchup=False,
+    max_active_runs=1,
+    default_args={"retries": 2, "retry_delay": timedelta(minutes=5),
+                  "execution_timeout": timedelta(hours=1)},
+    tags=["orders"],
+)
+def orders_daily():
+    @task
+    def extract(data_interval_start=None, data_interval_end=None) -> str:
+        return f"s3://bucket/raw/orders/{data_interval_start:%Y-%m-%d}.parquet"
+
+    @task
+    def load(path: str) -> None:
+        ...
+
+    load(extract())
+
+orders_daily()
+```
+
+| Task | How |
+|------|-----|
+| Map over a runtime list | `process.expand(table=get_tables())` · fixed args: `.partial(conn_id="x").expand(...)` |
+| Run after another DAG's data | Producer task `outlets=[Asset("s3://.../orders")]` → consumer `schedule=[Asset("s3://.../orders")]` |
+| Wait without holding a slot | `mode="reschedule"` or `deferrable=True` operators |
+| Limit concurrency on a resource | `pool="snowflake_pool"`, `pool_slots=2` |
+| Join after a branch | `trigger_rule="none_failed_min_one_success"` |
+| Always run a cleanup task | `trigger_rule="all_done"` |
+| Template variables | `{{ ds }}` · `{{ data_interval_start }}` · `{{ data_interval_end }}` · `{{ run_id }}` · `{{ params.x }}` |
+| Test one task locally | `airflow tasks test <dag_id> <task_id> 2024-03-15` |
+| Test a whole DAG in-process | `dag.test()` (in a `__main__` block) |
+| Find import errors | `airflow dags list-import-errors` |
+| Trigger with config | `airflow dags trigger <dag_id> --conf '{"table": "orders"}'` |
+| Backfill | Airflow 3: `airflow backfill create --dag-id d --from-date ... --to-date ...` · Airflow 2: `airflow dags backfill -s ... -e ... d` |
+| Clear failed tasks to rerun | `airflow tasks clear <dag_id> -s <start> -e <end> --only-failed` |
+
+**Executor picker:** local/dev → `LocalExecutor` · many workers, steady load → `CeleryExecutor` · per-task isolation and dependencies → `KubernetesExecutor` · managed → MWAA, Cloud Composer, Astronomer
+
+---
+
 ## Interview Questions
 
-**Q: What is the difference between a DAG's `schedule_interval` and its `start_date`?**
-A: `start_date` is when the DAG becomes eligible to run — Airflow won't schedule runs before this date. `schedule_interval` defines the frequency (e.g., `"0 2 * * *"` = daily at 2am). Critically, Airflow uses *logical dates* (data intervals): a daily DAG with `start_date=2024-01-01` first runs at `2024-01-02 00:00` to process the data interval `2024-01-01`. This offset trips up beginners — the run happens *after* the interval it represents.
+**Q: What is the difference between a DAG's `schedule` and its `start_date`?**
+A: `start_date` is when the DAG becomes eligible to run — Airflow won't schedule runs before this date. `schedule` (called `schedule_interval` before Airflow 2.4) defines the frequency (e.g., `"0 2 * * *"` = daily at 2am). With interval-based timetables (the Airflow 2 default), a daily DAG with `start_date=2024-01-01` first runs at `2024-01-02 00:00` to process the data interval that *starts* on `2024-01-01` — the run happens after the interval it represents, which trips up beginners. Airflow 3 changed cron schedules to trigger-based timetables where `logical_date` is the run time, so it's safest to read `data_interval_start` / `data_interval_end` explicitly.
 
 **Q: What is `catchup` and when would you set it to False?**
-A: When `catchup=True` (the default), if your DAG was paused for 30 days and you re-enable it, Airflow will schedule 30 backfill runs to cover the missed intervals. Set `catchup=False` when you only want the next upcoming run, not historical backfill. For event-driven or near-real-time pipelines where historical reruns don't make sense (e.g., "send daily email"), always set `catchup=False` to avoid an avalanche of runs on startup.
+A: When `catchup=True` (the default in Airflow 2; Airflow 3 defaults to `False`), if your DAG was paused for 30 days and you re-enable it, Airflow will schedule 30 backfill runs to cover the missed intervals. Set `catchup=False` when you only want the next upcoming run, not historical backfill. For event-driven or near-real-time pipelines where historical reruns don't make sense (e.g., "send daily email"), always set `catchup=False` to avoid an avalanche of runs on startup.
 
 **Q: What are XComs and what's the limitation you need to know?**
 A: XComs (cross-communications) let tasks share small values: one task pushes a value, another pulls it with `ti.xcom_pull(task_ids="upstream_task")`. In the TaskFlow API, return values are automatically pushed as XComs. The critical limitation: XComs are stored in the Airflow metadata database (Postgres/MySQL). They're for small values like IDs, row counts, or status strings — not DataFrames or large payloads. Storing a 1GB file path is fine; storing the file contents will bloat your metadata DB and cause performance issues.
@@ -880,6 +981,18 @@ A: Don't pass the file contents through XComs — push the path or identifier in
 
 **Q: What's the difference between `LocalExecutor`, `CeleryExecutor`, and `KubernetesExecutor`?**
 A: `LocalExecutor` runs tasks as subprocesses on the same machine as the scheduler — simple, no extra infrastructure, good for small deployments. `CeleryExecutor` distributes tasks to a pool of separate worker machines via a message broker (Redis/RabbitMQ) — scalable, but requires maintaining workers and the broker. `KubernetesExecutor` launches each task instance in its own Kubernetes pod — best for cloud-native deployments, perfect isolation, no idle workers (pods spin up/down per task), but has pod startup overhead (~30s) that makes it poor for fast, short tasks.
+
+---
+
+## Further Reading
+
+- [Apache Airflow documentation](https://airflow.apache.org/docs/apache-airflow/stable/index.html)
+- [Upgrading to Airflow 3](https://airflow.apache.org/docs/apache-airflow/stable/installation/upgrading_to_airflow3.html)
+- [Airflow best practices](https://airflow.apache.org/docs/apache-airflow/stable/best-practices.html) — top-level code, idempotency, testing
+- [Dynamic task mapping](https://airflow.apache.org/docs/apache-airflow/stable/authoring-and-scheduling/dynamic-task-mapping.html)
+- [Astronomer guides](https://www.astronomer.io/docs/learn) — practical, well-maintained tutorials
+- [Cosmos](https://astronomer.github.io/astronomer-cosmos/) — run dbt projects as Airflow task groups
+- *Data Pipelines with Apache Airflow* — Bas Harenslak & Julian de Ruiter (Manning)
 
 ---
 
