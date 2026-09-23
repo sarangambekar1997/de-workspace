@@ -3,7 +3,7 @@
 
 **Prerequisites:** [DE Concepts](../00-foundations/de-concepts.md) · [Data Modeling](../01-storage/data-modeling.md) · [Data Ingestion & CDC](../02-processing/ingestion-cdc.md)
 
-**Related:** [Cloud Storage](../01-storage/cloud-storage.md) · [Kafka](../04-streaming/kafka-reference.md) · [Airflow](../03-orchestration/airflow-reference.md) · [Data Quality](../05-quality-governance/data-quality.md) · [Glossary](../99-reference/glossary.md)
+**Related:** [Cloud Storage](../01-storage/cloud-storage.md) · [Kafka](../04-streaming/kafka-reference.md) · [Airflow](../03-orchestration/airflow-reference.md) · [Data Quality](../05-quality-governance/data-quality.md) · [Cost Optimization](cost-optimization.md) · [Glossary](../99-reference/glossary.md)
 
 ---
 
@@ -417,4 +417,4 @@ A: Name the first bottleneck and its fix: more partitions and consumers for inge
 
 ---
 
-**Previous:** [Data Ingestion & CDC](../02-processing/ingestion-cdc.md) · **Next:** [Prompt Engineering](../07-ai/prompt-engineering.md) · **Back to:** [Index](../README.md)
+**Previous:** [Data Ingestion & CDC](../02-processing/ingestion-cdc.md) · **Next:** [Cost Optimization](cost-optimization.md) · **Back to:** [Index](../README.md)

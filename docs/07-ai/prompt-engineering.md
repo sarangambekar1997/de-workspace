@@ -592,4 +592,4 @@ A: Newer models follow instructions more literally and reason better on their ow
 
 ---
 
-**Previous:** [Data Engineering System Design](../08-architecture/system-design.md) · **Next:** [LLM APIs](llm-apis.md) · **Back to:** [Index](../README.md)
+**Previous:** [Cost Optimization](../08-architecture/cost-optimization.md) · **Next:** [LLM APIs](llm-apis.md) · **Back to:** [Index](../README.md)

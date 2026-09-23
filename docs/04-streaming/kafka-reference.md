@@ -3,7 +3,7 @@
 
 **Prerequisites:** [DE Concepts](../00-foundations/de-concepts.md) · [Python for DE](../00-foundations/python-reference.md)
 
-**Related:** [PySpark](../02-processing/pyspark-reference.md) · [Databricks](../02-processing/databricks-reference.md) · [Data Quality](../05-quality-governance/data-quality.md) · [Glossary](../99-reference/glossary.md)
+**Related:** [PySpark](../02-processing/pyspark-reference.md) · [Databricks](../02-processing/databricks-reference.md) · [Data Quality](../05-quality-governance/data-quality.md) · [Apache Flink](flink-reference.md) · [Glossary](../99-reference/glossary.md)
 
 ---
 
@@ -490,8 +490,9 @@ finally:
 
 Kafka Connect moves data between Kafka and external systems without writing producers/consumers. Configured via JSON, not code.
 
+Source connector — capture changes from Postgres into Kafka with Debezium. It creates the topics `cdc.public.orders` and `cdc.public.customers`, and every insert, update, and delete on those tables becomes an event:
+
 ```json
-// Source connector — pull from Postgres into Kafka (via Debezium)
 {
     "name": "postgres-source-orders",
     "config": {
@@ -499,7 +500,7 @@ Kafka Connect moves data between Kafka and external systems without writing prod
         "database.hostname": "postgres",
         "database.port": "5432",
         "database.user": "debezium",
-        "database.password": "secret",
+        "database.password": "${file:/secrets/db.properties:password}",
         "database.dbname": "myapp",
         "table.include.list": "public.orders,public.customers",
         "topic.prefix": "cdc",
@@ -508,12 +509,11 @@ Kafka Connect moves data between Kafka and external systems without writing prod
         "slot.name": "debezium_slot"
     }
 }
-// Creates topics: cdc.public.orders, cdc.public.customers
-// Each INSERT/UPDATE/DELETE on those tables → event in Kafka
 ```
 
+Sink connector — write from Kafka to S3:
+
 ```json
-// Sink connector — write from Kafka to S3
 {
     "name": "s3-sink-orders",
     "config": {
@@ -834,4 +834,4 @@ A: CDC with Debezium running on Kafka Connect: it reads Postgres's write-ahead l
 
 ---
 
-**Previous:** [Apache Iceberg](../01-storage/apache-iceberg.md) · **Next:** [Data Ingestion & CDC](../02-processing/ingestion-cdc.md) · **Back to:** [Index](../README.md)
+**Previous:** [Apache Iceberg](../01-storage/apache-iceberg.md) · **Next:** [Apache Flink](flink-reference.md) · **Back to:** [Index](../README.md)

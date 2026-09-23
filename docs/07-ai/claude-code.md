@@ -293,9 +293,9 @@ claude mcp list
 claude mcp remove my-server
 ```
 
+`.mcp.json` (repository root) — project-scoped MCP servers, committed and shared with the team. `${VAR}` values are expanded from each developer's environment; never commit secrets.
+
 ```json
-// .mcp.json (repo root) — project-scoped MCP servers, committed and shared with the team
-// ${VAR} values are expanded from each developer's environment — never commit secrets
 {
   "mcpServers": {
     "warehouse": {
@@ -331,8 +331,9 @@ With an MCP server, Claude can:
 
 Hooks run shell commands automatically at specific points in Claude Code's lifecycle — for enforcing standards, running checks, or integrating with external systems. Each hook receives a JSON payload on **stdin** (session ID, tool name, tool input, ...); use `jq` to pull out what you need.
 
+`.claude/settings.json` (project, committed) or `~/.claude/settings.json` (all projects):
+
 ```json
-// .claude/settings.json (project, commit it) or ~/.claude/settings.json (all projects)
 {
   "hooks": {
     "PostToolUse": [

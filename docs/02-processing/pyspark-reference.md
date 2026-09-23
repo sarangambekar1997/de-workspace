@@ -3,7 +3,7 @@
 
 **Prerequisites:** [Python for DE](../00-foundations/python-reference.md) · [SQL](../00-foundations/sql-reference.md)
 
-**Related:** [Databricks](databricks-reference.md) · [Apache Iceberg](../01-storage/apache-iceberg.md) · [Kafka](../04-streaming/kafka-reference.md) · [Glossary](../99-reference/glossary.md)
+**Related:** [Databricks](databricks-reference.md) · [Apache Iceberg](../01-storage/apache-iceberg.md) · [Kafka](../04-streaming/kafka-reference.md) · [DuckDB & Polars](duckdb-polars.md) · [Glossary](../99-reference/glossary.md)
 
 ---
 
@@ -1108,4 +1108,4 @@ A: Replayable sources (Kafka offsets, file lists) plus checkpointing plus idempo
 
 ---
 
-**Previous:** [Airflow](../03-orchestration/airflow-reference.md) · **Next:** [Databricks](databricks-reference.md) · **Back to:** [Index](../README.md)
+**Previous:** [DuckDB & Polars](duckdb-polars.md) · **Next:** [Databricks](databricks-reference.md) · **Back to:** [Index](../README.md)

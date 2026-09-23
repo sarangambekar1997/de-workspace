@@ -392,4 +392,4 @@ A: For common SaaS sources and standard databases, managed or open-source connec
 
 ---
 
-**Previous:** [Kafka](../04-streaming/kafka-reference.md) · **Next:** [Data Engineering System Design](../08-architecture/system-design.md) · **Back to:** [Index](../README.md)
+**Previous:** [Apache Flink](../04-streaming/flink-reference.md) · **Next:** [Data Engineering System Design](../08-architecture/system-design.md) · **Back to:** [Index](../README.md)

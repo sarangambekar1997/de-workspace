@@ -299,8 +299,9 @@ df.repartition(100).write.parquet(path)
 
 ### S3 IAM policy patterns
 
+Pipeline role — read raw, write silver:
+
 ```json
-// Pipeline role — read raw, write silver
 {
     "Version": "2012-10-17",
     "Statement": [
@@ -321,8 +322,9 @@ df.repartition(100).write.parquet(path)
 }
 ```
 
+BI tool role — read gold only:
+
 ```json
-// BI tool role — read gold only
 {
     "Statement": [{
         "Effect": "Allow",
@@ -520,8 +522,9 @@ s3.upload_file("large_file.parquet", "my-bucket", "path/file.parquet",
 
 Automatically transition or delete objects based on age.
 
+S3 lifecycle policy — transition and expire raw data (objects under `bronze/` expire after 2,555 days, about 7 years):
+
 ```json
-// S3 lifecycle policy — transition and expire raw data
 {
     "Rules": [
         {
@@ -533,7 +536,7 @@ Automatically transition or delete objects based on age.
                 {"Days": 90,  "StorageClass": "GLACIER_IR"},
                 {"Days": 365, "StorageClass": "GLACIER"}
             ],
-            "Expiration": {"Days": 2555}   // delete after 7 years
+            "Expiration": {"Days": 2555}
         },
         {
             "ID": "delete-temp-files",

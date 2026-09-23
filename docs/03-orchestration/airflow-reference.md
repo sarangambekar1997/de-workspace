@@ -1003,4 +1003,4 @@ A: `LocalExecutor` runs tasks as subprocesses on the same machine as the schedul
 
 ---
 
-**Previous:** [Data Quality](../05-quality-governance/data-quality.md) · **Next:** [PySpark](../02-processing/pyspark-reference.md) · **Back to:** [Index](../README.md)
+**Previous:** [Data Governance & Lineage](../05-quality-governance/governance-lineage.md) · **Next:** [DuckDB & Polars](../02-processing/duckdb-polars.md) · **Back to:** [Index](../README.md)

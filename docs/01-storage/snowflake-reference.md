@@ -3,7 +3,7 @@
 
 **Prerequisites:** [SQL](../00-foundations/sql-reference.md)
 
-**Related:** [dbt](../02-processing/dbt-reference.md) · [Data Modeling](data-modeling.md) · [Terraform](../06-infrastructure/terraform-for-de.md) · [Glossary](../99-reference/glossary.md)
+**Related:** [dbt](../02-processing/dbt-reference.md) · [Data Modeling](data-modeling.md) · [Terraform](../06-infrastructure/terraform-for-de.md) · [BigQuery](bigquery-reference.md) · [Amazon Redshift](redshift-reference.md) · [Glossary](../99-reference/glossary.md)
 
 ---
 
@@ -805,4 +805,4 @@ A: Batch with `COPY INTO` from a stage (internal, or external S3/GCS/Azure using
 
 ---
 
-**Previous:** [Terraform](../06-infrastructure/terraform-for-de.md) · **Next:** [dbt](../02-processing/dbt-reference.md) · **Back to:** [Index](../README.md)
+**Previous:** [Terraform](../06-infrastructure/terraform-for-de.md) · **Next:** [BigQuery](bigquery-reference.md) · **Back to:** [Index](../README.md)

@@ -21,6 +21,7 @@ Each guide follows a **Basic → Intermediate → Advanced** progression with re
 
 | Guide | What you'll learn |
 |-------|------------------|
+| [DuckDB & Polars](02-processing/duckdb-polars.md) | Single-node SQL and DataFrame analytics, larger-than-memory processing, object storage, interoperability |
 | [PySpark Reference](02-processing/pyspark-reference.md) | DataFrames, transformations, window functions, UDFs, streaming, optimization |
 | [Docker for DE](06-infrastructure/docker-reference.md) | Images, Dockerfile, volumes, networking, Docker Compose, Airflow/Spark in Docker |
 | [Databricks](02-processing/databricks-reference.md) | Delta Lake, Auto Loader, DLT, Unity Catalog, Workflows, Delta vs Iceberg vs Hudi |
@@ -31,6 +32,7 @@ Each guide follows a **Basic → Intermediate → Advanced** progression with re
 |-------|------------------|
 | [Apache Airflow](03-orchestration/airflow-reference.md) | DAGs, operators, XComs, sensors, TaskFlow API, dynamic DAGs, CI/CD |
 | [Apache Kafka](04-streaming/kafka-reference.md) | Topics, producers, consumers, Schema Registry, Kafka Connect, Kafka Streams, DLQ patterns |
+| [Apache Flink](04-streaming/flink-reference.md) | Stateful stream processing, event time and watermarks, windows, stream joins, checkpoints, Flink SQL |
 | [Data Ingestion & CDC](02-processing/ingestion-cdc.md) | API, file, and database ingestion; incremental loads; CDC with Debezium; applying changes with MERGE; build vs buy |
 
 ### Storage & Transformation
@@ -39,6 +41,8 @@ Each guide follows a **Basic → Intermediate → Advanced** progression with re
 |-------|------------------|
 | [Snowflake Reference](01-storage/snowflake-reference.md) | Architecture, virtual warehouses, semi-structured data, streams & tasks, RBAC |
 | [dbt Reference](02-processing/dbt-reference.md) | Models, materializations, tests, macros, incremental models, snapshots, CI/CD |
+| [BigQuery](01-storage/bigquery-reference.md) | Serverless architecture, loading, partitioning and clustering, nested data, pricing and cost control, security |
+| [Amazon Redshift](01-storage/redshift-reference.md) | Provisioned vs serverless, distribution and sort keys, COPY/UNLOAD, Spectrum, SUPER, workload management |
 | [Apache Iceberg](01-storage/apache-iceberg.md) | Open table format, hidden partitioning, schema evolution, time travel, ACID, AWS Glue/Athena |
 
 ### Quality & Observability
@@ -46,6 +50,7 @@ Each guide follows a **Basic → Intermediate → Advanced** progression with re
 | Guide | What you'll learn |
 |-------|------------------|
 | [Data Quality](05-quality-governance/data-quality.md) | SQL checks, Great Expectations, dbt tests, anomaly detection, data contracts, alerting |
+| [Data Governance & Lineage](05-quality-governance/governance-lineage.md) | Catalogs, ownership, classification, access models, lineage and OpenLineage, contracts, retention and deletion |
 
 ### AI & Machine Learning
 
@@ -83,6 +88,7 @@ Each guide follows a **Basic → Intermediate → Advanced** progression with re
 
 | Guide | What you'll learn |
 |-------|------------------|
+| [Cost Optimization](08-architecture/cost-optimization.md) | Unit economics, attribution, spend monitoring per platform, compute/query/storage optimization, guardrails |
 | [Data Engineering System Design](08-architecture/system-design.md) | Requirements, capacity estimation, architecture patterns, batch vs streaming, reliability, security, cost, worked designs |
 
 ---
@@ -107,27 +113,31 @@ Each guide follows a **Basic → Intermediate → Advanced** progression with re
 ### Path 2: Warehouse & transformation focus
 
 1. [SQL Reference](00-foundations/sql-reference.md)
-2. [Snowflake Reference](01-storage/snowflake-reference.md)
+2. A cloud warehouse: [Snowflake](01-storage/snowflake-reference.md), [BigQuery](01-storage/bigquery-reference.md), or [Amazon Redshift](01-storage/redshift-reference.md)
 3. [dbt Reference](02-processing/dbt-reference.md)
 4. [Data Quality](05-quality-governance/data-quality.md)
-5. [Git for DE](00-foundations/git-for-de.md) — dbt CI/CD section
+5. [Data Governance & Lineage](05-quality-governance/governance-lineage.md)
+6. [Git for DE](00-foundations/git-for-de.md) — CI/CD section
+7. [Cost Optimization](08-architecture/cost-optimization.md)
 
 ### Path 3: Spark & big data focus
 
 1. [DE Concepts](00-foundations/de-concepts.md)
-2. [PySpark Reference](02-processing/pyspark-reference.md)
-3. [Databricks](02-processing/databricks-reference.md)
-4. [Cloud Storage](01-storage/cloud-storage.md)
-5. [Apache Kafka](04-streaming/kafka-reference.md)
+2. [DuckDB & Polars](02-processing/duckdb-polars.md) — single-node first
+3. [PySpark Reference](02-processing/pyspark-reference.md)
+4. [Databricks](02-processing/databricks-reference.md)
+5. [Cloud Storage](01-storage/cloud-storage.md)
+6. [Apache Kafka](04-streaming/kafka-reference.md)
 
 ### Path 4: Streaming & real-time
 
 1. [DE Concepts](00-foundations/de-concepts.md) — streaming section
 2. [Apache Kafka](04-streaming/kafka-reference.md)
-3. [Data Ingestion & CDC](02-processing/ingestion-cdc.md) — CDC with Debezium
-4. [PySpark Reference](02-processing/pyspark-reference.md) — Structured Streaming section
-5. [Databricks](02-processing/databricks-reference.md) — Auto Loader and DLT sections
-6. [Data Quality](05-quality-governance/data-quality.md) — DQ in streaming pipelines
+3. [Apache Flink](04-streaming/flink-reference.md)
+4. [Data Ingestion & CDC](02-processing/ingestion-cdc.md) — CDC with Debezium
+5. [PySpark Reference](02-processing/pyspark-reference.md) — Structured Streaming section
+6. [Databricks](02-processing/databricks-reference.md) — Auto Loader and DLT sections
+7. [Data Quality](05-quality-governance/data-quality.md) — DQ in streaming pipelines
 
 ### Path 5: AI & LLM engineering
 
