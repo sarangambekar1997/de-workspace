@@ -7,6 +7,25 @@
 
 ---
 
+## Plain English: What Is Terraform and Why Should a Data Engineer Care?
+
+**The problem:** A data platform is a lot of infrastructure: S3 buckets, IAM roles, Snowflake databases, warehouses and grants, Databricks workspaces and jobs, Airflow environments. Clicking these together in web consoles works once — then nobody remembers the exact settings, dev and prod quietly drift apart, and rebuilding after a mistake takes days.
+
+**Terraform is the fix:** you *declare* the infrastructure you want in `.tf` files, and Terraform works out what to create, change, or delete to make reality match. The files live in Git, so every infrastructure change is reviewed in a pull request, and the same code builds dev, staging, and prod.
+
+```
+ .tf files (desired state)      terraform plan                    terraform apply
+ ───────────────────────   →   compare with state + real   →   create / update / delete
+ "a bucket, a role,             infrastructure; show a          via each provider's API
+  a warehouse, a grant"         diff for review                 (AWS, Snowflake, Databricks)
+                                                                         │
+                                                              state file records what exists
+```
+
+**The key idea is state:** Terraform keeps a state file mapping your code to real resource IDs. Protect it (remote backend, locking, versioning), because a lost or corrupted state file means Terraform no longer knows what it manages.
+
+---
+
 ## Table of Contents
 
 **Basic**
@@ -26,6 +45,11 @@
 - [Databricks with Terraform](#databricks-with-terraform)
 - [Airflow Infra on AWS](#airflow-infra-on-aws)
 - [Common Mistakes](#common-mistakes)
+
+**Reference**
+- [Cheat Sheet](#cheat-sheet)
+- [Interview Questions](#interview-questions)
+- [Further Reading](#further-reading)
 
 ---
 
@@ -274,9 +298,12 @@ Reusable groups of resources — like functions for infrastructure.
 
 ```hcl
 # modules/s3-data-lake/main.tf
-variable "bucket_name"  { type = string }
-variable "environment"  { type = string }
-variable "layers"       { type = list(string); default = ["bronze", "silver", "gold"] }
+variable "bucket_name" { type = string }
+variable "environment" { type = string }
+variable "layers" {
+  type    = list(string)
+  default = ["bronze", "silver", "gold"]
+}
 
 resource "aws_s3_bucket" "this" {
   bucket = var.bucket_name
@@ -330,27 +357,24 @@ output "prod_bucket_arn" {
 State must live somewhere shared — not on a local laptop.
 
 ```hcl
-# backend.tf — store state in S3 with DynamoDB locking
+# backend.tf — store state in S3 with native S3 locking (Terraform 1.11+)
 terraform {
   backend "s3" {
-    bucket         = "mycompany-terraform-state"
-    key            = "data-platform/prod/terraform.tfstate"
-    region         = "us-east-1"
-    encrypt        = true
-    dynamodb_table = "terraform-state-lock"   # prevents concurrent applies
+    bucket       = "mycompany-terraform-state"
+    key          = "data-platform/prod/terraform.tfstate"
+    region       = "us-east-1"
+    encrypt      = true
+    use_lockfile = true    # lock via a .tflock object in S3 — prevents concurrent applies
+    # Older Terraform: dynamodb_table = "terraform-state-lock" (now deprecated)
   }
 }
 ```
 
 ```bash
-# Create the state bucket and lock table BEFORE init (do this once manually or with a bootstrap script)
+# Create the state bucket BEFORE init (once, manually or with a bootstrap script)
 aws s3api create-bucket --bucket mycompany-terraform-state --region us-east-1
-aws s3api put-bucket-versioning --bucket mycompany-terraform-state --versioning-configuration Status=Enabled
-aws dynamodb create-table \
-  --table-name terraform-state-lock \
-  --attribute-definitions AttributeName=LockID,AttributeType=S \
-  --key-schema AttributeName=LockID,KeyType=HASH \
-  --billing-mode PAY_PER_REQUEST
+aws s3api put-bucket-versioning --bucket mycompany-terraform-state \
+  --versioning-configuration Status=Enabled    # lets you recover a corrupted state file
 ```
 
 ---
@@ -450,22 +474,26 @@ output "snowflake_secret_arn" {
 
 ## Snowflake with Terraform
 
+> Uses the `snowflakedb/snowflake` provider **v1+** (formerly `Snowflake-Labs/snowflake`). The 1.0 release renamed several resources — e.g. `snowflake_role` → `snowflake_account_role`, `snowflake_grant_privileges_to_role` → `snowflake_grant_privileges_to_account_role` — so older examples online often won't work.
+
 ```hcl
 # providers.tf — add Snowflake provider
 terraform {
   required_providers {
     snowflake = {
-      source  = "Snowflake-Labs/snowflake"
-      version = "~> 0.89"
+      source  = "snowflakedb/snowflake"
+      version = "~> 2.0"
     }
   }
 }
 
 provider "snowflake" {
-  account  = var.snowflake_account
-  username = var.snowflake_username
-  password = var.snowflake_password      # use env: SNOWFLAKE_PASSWORD
-  role     = "SYSADMIN"
+  organization_name = var.snowflake_organization
+  account_name      = var.snowflake_account
+  user              = var.snowflake_user
+  authenticator     = "SNOWFLAKE_JWT"               # key-pair auth for automation
+  private_key       = var.snowflake_private_key     # pass via env/secret store, never commit
+  role              = "SYSADMIN"
 }
 
 # Databases
@@ -493,9 +521,9 @@ resource "snowflake_schema" "marts" {
 # Virtual warehouses
 resource "snowflake_warehouse" "transform" {
   name           = "TRANSFORM_WH_${upper(var.environment)}"
-  warehouse_size = var.environment == "prod" ? "MEDIUM" : "X-SMALL"
+  warehouse_size = var.environment == "prod" ? "MEDIUM" : "XSMALL"
   auto_suspend   = 60
-  auto_resume    = true
+  auto_resume    = "true"          # string in provider v1+ ("true" / "false")
   comment        = "Used by dbt transformations"
 }
 
@@ -503,54 +531,52 @@ resource "snowflake_warehouse" "reporting" {
   name           = "REPORTING_WH_${upper(var.environment)}"
   warehouse_size = "SMALL"
   auto_suspend   = 300
-  auto_resume    = true
+  auto_resume    = "true"
 }
 
 # Roles
-resource "snowflake_role" "analyst" {
+resource "snowflake_account_role" "analyst" {
   name    = "ANALYST_${upper(var.environment)}"
   comment = "Read access to gold layer tables"
 }
 
-resource "snowflake_role" "transformer" {
+resource "snowflake_account_role" "transformer" {
   name    = "TRANSFORMER_${upper(var.environment)}"
   comment = "Used by dbt to run transformations"
 }
 
-# Grants
-resource "snowflake_grant_privileges_to_role" "analyst_select" {
-  role_name  = snowflake_role.analyst.name
-  privileges = ["SELECT"]
+# Grants — analysts can read all future tables in MARTS
+resource "snowflake_grant_privileges_to_account_role" "analyst_select" {
+  account_role_name = snowflake_account_role.analyst.name
+  privileges        = ["SELECT"]
   on_schema_object {
-    future_objects_in_schema {
+    future {
       object_type_plural = "TABLES"
-      database           = snowflake_database.analytics.name
-      schema             = snowflake_schema.marts.name
+      in_schema          = snowflake_schema.marts.fully_qualified_name
     }
   }
 }
 
-resource "snowflake_grant_privileges_to_role" "transformer_all" {
-  role_name  = snowflake_role.transformer.name
-  privileges = ["ALL PRIVILEGES"]
+resource "snowflake_grant_privileges_to_account_role" "transformer_all" {
+  account_role_name = snowflake_account_role.transformer.name
+  all_privileges    = true
   on_schema {
-    database  = snowflake_database.analytics.name
-    schema_name = snowflake_schema.marts.name
+    schema_name = snowflake_schema.marts.fully_qualified_name
   }
 }
 
-# Service account user for dbt
-resource "snowflake_user" "dbt_service_account" {
-  name         = "DBT_SA_${upper(var.environment)}"
-  login_name   = "dbt_sa_${var.environment}"
-  default_role = snowflake_role.transformer.name
+# Service user for dbt (TYPE = SERVICE: key-pair auth, no password, no MFA prompts)
+resource "snowflake_service_user" "dbt" {
+  name              = "DBT_SA_${upper(var.environment)}"
+  login_name        = "dbt_sa_${var.environment}"
+  default_role      = snowflake_account_role.transformer.name
   default_warehouse = snowflake_warehouse.transform.name
-  must_change_password = false
+  rsa_public_key    = var.dbt_rsa_public_key
 }
 
 resource "snowflake_grant_account_role" "dbt_sa_role" {
-  role_name = snowflake_role.transformer.name
-  user_name = snowflake_user.dbt_service_account.name
+  role_name = snowflake_account_role.transformer.name
+  user_name = snowflake_service_user.dbt.name
 }
 ```
 
@@ -701,11 +727,26 @@ resource "aws_mwaa_environment" "airflow" {
   }
 
   logging_configuration {
-    dag_processing_logs  { enabled = true; log_level = "WARNING" }
-    scheduler_logs       { enabled = true; log_level = "WARNING" }
-    task_logs            { enabled = true; log_level = "INFO" }
-    webserver_logs       { enabled = true; log_level = "WARNING" }
-    worker_logs          { enabled = true; log_level = "WARNING" }
+    dag_processing_logs {
+      enabled   = true
+      log_level = "WARNING"
+    }
+    scheduler_logs {
+      enabled   = true
+      log_level = "WARNING"
+    }
+    task_logs {
+      enabled   = true
+      log_level = "INFO"
+    }
+    webserver_logs {
+      enabled   = true
+      log_level = "WARNING"
+    }
+    worker_logs {
+      enabled   = true
+      log_level = "WARNING"
+    }
   }
 }
 ```
@@ -722,7 +763,8 @@ resource "aws_mwaa_environment" "airflow" {
 
 2. No remote state backend
    Problem: two engineers applying at the same time = corrupted state
-   Fix:     Always configure S3 + DynamoDB locking from day one
+   Fix:     Always configure a remote backend with locking from day one
+            (S3 with use_lockfile = true, Terraform Cloud, or GCS/Azure backends)
 
 3. Using terraform destroy in production
    Problem: destroys everything, including live data
@@ -752,7 +794,12 @@ resource "aws_mwaa_environment" "airflow" {
 
 8. Importing existing resources manually instead of into state
    Problem: Terraform thinks the resource doesn't exist → tries to create → conflict
-   Fix:     terraform import aws_s3_bucket.data_lake mycompany-data-lake-prod
+   Fix:     An import block (Terraform 1.5+), reviewed in plan like any change:
+              import {
+                to = aws_s3_bucket.data_lake
+                id = "mycompany-data-lake-prod"
+              }
+            or the CLI: terraform import aws_s3_bucket.data_lake mycompany-data-lake-prod
 ```
 
 ### .gitignore for Terraform
@@ -762,13 +809,88 @@ resource "aws_mwaa_environment" "airflow" {
 *.tfstate
 *.tfstate.*
 .terraform/
-.terraform.lock.hcl   # OK to commit this one if you want pinned versions
+# .terraform.lock.hcl — DO commit this: it pins exact provider versions and checksums
 terraform.tfvars      # contains secrets — use .tfvars.example instead
 *.tfvars.backup
 crash.log
 override.tf
 override.tf.json
 ```
+
+---
+
+## Cheat Sheet
+
+| Task | Command |
+|------|---------|
+| Download providers, configure the backend | `terraform init` (`-upgrade` to update providers within constraints) |
+| Format / validate | `terraform fmt -recursive` · `terraform validate` |
+| Preview changes | `terraform plan -out=tfplan` |
+| Apply exactly what was reviewed | `terraform apply tfplan` |
+| Per-environment values | `terraform plan -var-file=envs/prod.tfvars` |
+| List / inspect state | `terraform state list` · `terraform state show <addr>` |
+| Rename or move a resource without recreating it | a `moved { from = ... to = ... }` block (or `terraform state mv`) |
+| Bring an existing resource under management | an `import { to = ..., id = ... }` block (1.5+) · `terraform plan -generate-config-out=gen.tf` |
+| Stop managing something without deleting it | a `removed { from = ... }` block (1.7+) or `terraform state rm` |
+| Force a resource to be replaced | `terraform apply -replace=<addr>` |
+| Detect drift | `terraform plan -refresh-only` |
+| Show outputs | `terraform output -json` |
+
+**Language essentials**
+
+```hcl
+locals { name = "${var.project}-${var.environment}" }          # computed values
+
+resource "aws_s3_bucket" "layer" {                            # many from a map/set
+  for_each = toset(["bronze", "silver", "gold"])
+  bucket   = "${local.name}-${each.key}"
+}
+
+resource "aws_s3_bucket" "logs" {
+  count  = var.environment == "prod" ? 1 : 0                  # conditional resource
+  bucket = "${local.name}-logs"
+}
+
+data "aws_caller_identity" "me" {}                            # read, don't manage
+
+# Inside any resource holding data:  lifecycle { prevent_destroy = true }
+```
+
+**Project layout:** reusable `modules/` · one root configuration per environment (or workspace) · a separate state file per environment and per blast radius (network, data platform, IAM)
+
+**Safe CI flow:** `fmt -check` → `validate` → `plan` posted on the PR → review → `apply` of the saved plan on merge, using short-lived cloud credentials (OIDC), never long-lived keys
+
+---
+
+## Interview Questions
+
+**Q: What is Terraform state and why is it important?**
+A: State is Terraform's record of which real resources correspond to which blocks in your code, plus their last-known attributes. Terraform uses it to calculate plans (what to create, change, or destroy) and to track dependencies. It must be stored remotely (S3, GCS, Terraform Cloud) with locking so two people can't apply at the same time, versioned so it can be recovered, and treated as sensitive, because it can contain secrets in plain text.
+
+**Q: What happens during `terraform plan` and `apply`?**
+A: `plan` refreshes state against the real infrastructure, compares that with your configuration, and produces an execution plan: resources to create (+), update in place (~), or destroy and recreate (-/+). `apply` executes the plan through each provider's API in dependency order, updating state as it goes. Saving the plan (`-out`) and applying that exact file guarantees you apply what was reviewed.
+
+**Q: How do you manage multiple environments with Terraform?**
+A: Common approaches: a separate root configuration and state per environment that call shared modules with different variables (the most explicit and most common); Terraform workspaces (one configuration, several states — convenient but easy to apply to the wrong one); or wrappers like Terragrunt. Whichever you choose, keep state separate per environment so a mistake in dev can't touch prod.
+
+**Q: What is drift and how do you handle it?**
+A: Drift is when real infrastructure no longer matches the code — usually because someone changed something in the console. `terraform plan` (or `plan -refresh-only`) reveals it. You either bring the code in line with the change, if it was intentional, or let the next apply revert it. Prevent it with restricted console permissions and scheduled plans that alert on unexpected differences.
+
+**Q: How do you handle secrets in Terraform?**
+A: Don't put them in `.tf` or committed `.tfvars` files. Pass them through environment variables (`TF_VAR_...`) from CI secrets, or read them at apply time from a secrets manager with a data source. Mark variables `sensitive = true` to hide them in output. Remember that values still end up in state, so lock down and encrypt the state backend — or better, have Terraform create the secret *container* and let another process set the value.
+
+**Q: What does a data engineer typically manage with Terraform?**
+A: Storage (buckets with encryption, versioning, and lifecycle rules), IAM roles and policies for pipelines, Snowflake objects (databases, schemas, warehouses, roles, grants, service users), Databricks workspaces, clusters, jobs, and Unity Catalog objects, Kafka topics, and orchestration environments like MWAA or Composer. Anything that should be identical across environments and reviewable in a PR is a good candidate.
+
+---
+
+## Further Reading
+
+- [Terraform documentation](https://developer.hashicorp.com/terraform/docs) and [tutorials](https://developer.hashicorp.com/terraform/tutorials)
+- [Terraform Registry](https://registry.terraform.io/) — provider docs for [AWS](https://registry.terraform.io/providers/hashicorp/aws/latest/docs), [Snowflake](https://registry.terraform.io/providers/snowflakedb/snowflake/latest/docs), and [Databricks](https://registry.terraform.io/providers/databricks/databricks/latest/docs)
+- [OpenTofu](https://opentofu.org/) — the open-source fork of Terraform, largely compatible
+- [tflint](https://github.com/terraform-linters/tflint) and [Checkov](https://www.checkov.io/) — linting and security scanning for Terraform
+- *Terraform: Up & Running, 3rd Edition* — Yevgeniy Brikman (O'Reilly)
 
 ---
 
