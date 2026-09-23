@@ -220,15 +220,15 @@ models:
   - name: fct_orders
     columns:
       - name: order_id
-        tests:
+        data_tests:
           - unique
           - not_null
       - name: status
-        tests:
+        data_tests:
           - accepted_values:
               values: ['placed', 'shipped', 'delivered', 'cancelled']
       - name: customer_id
-        tests:
+        data_tests:
           - relationships:
               to: ref('dim_customer')
               field: customer_id
@@ -262,7 +262,7 @@ WHERE ABS(warehouse.revenue - source.revenue) > 1.0
 ```yaml
 columns:
   - name: amount
-    tests:
+    data_tests:
       - dbt_expectations.expect_column_values_to_be_between:
           min_value: 0
           max_value: 100000
@@ -271,13 +271,13 @@ columns:
           max_value: 500
 
   - name: created_at
-    tests:
+    data_tests:
       - dbt_expectations.expect_column_values_to_be_of_type:
           column_type: timestamp_ntz
 
 models:
   - name: fct_orders
-    tests:
+    data_tests:
       - dbt_expectations.expect_table_row_count_to_be_between:
           min_value: 1000
       - dbt_expectations.expect_table_columns_to_match_ordered_list:
