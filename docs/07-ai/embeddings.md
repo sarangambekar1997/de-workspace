@@ -1,6 +1,10 @@
 # Embeddings
 > Turning text (and other data) into vectors for semantic search, clustering, classification, and RAG.
 
+**Prerequisites:** [LLM APIs](llm-apis.md)
+
+**Related:** [RAG](rag.md) · [Vector Databases](vector-databases.md) · [Glossary](../99-reference/glossary.md)
+
 ---
 
 ## Table of Contents
@@ -473,3 +477,7 @@ class IncrementalEmbeddingPipeline:
         print(f"Embedded: {len(to_embed)} new, {len(from_cache) - len(to_embed)} cached")
         return from_cache
 ```
+
+---
+
+**Previous:** [LLM APIs](llm-apis.md) · **Next:** [RAG](rag.md) · **Back to:** [Index](../README.md)

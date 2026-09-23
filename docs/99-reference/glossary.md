@@ -1,6 +1,10 @@
 # Data Engineering Glossary
 > Definitions for every term used across the DE bible — one place to look things up.
 
+**Prerequisites:** None — good place to start
+
+**Related:** [DE Concepts](../00-foundations/de-concepts.md)
+
 ---
 
 ## A
@@ -248,3 +252,7 @@
 **Z-Order** — A data skipping optimization in Delta Lake that colocalizes related data in the same files based on column values, improving query performance for multi-column filters.
 
 **Zero-Copy Clone (Snowflake)** — Creates a copy of a Snowflake table, schema, or database that shares the underlying storage until modified. Fast and nearly free until changes are made.
+
+---
+
+**Back to:** [Index](../README.md)

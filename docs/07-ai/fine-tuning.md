@@ -1,6 +1,10 @@
 # Fine-Tuning LLMs
 > When and how to customize a pre-trained model on your own data.
 
+**Prerequisites:** [LLM APIs](llm-apis.md) · [Evals](eval-and-evals.md)
+
+**Related:** [Local LLMs](local-llms.md) · [MLflow](mlflow.md) · [RAG](rag.md) · [Glossary](../99-reference/glossary.md)
+
 ---
 
 ## Plain English
@@ -567,3 +571,7 @@ A: LoRA (Low-Rank Adaptation) freezes the pre-trained model weights and trains t
 
 **Q: When would you choose fine-tuning over RAG?**
 A: RAG is better for knowledge (facts that change, need citations). Fine-tuning is better for behavior (consistent format, style, custom classifications, domain-specific extraction). Often the right answer is both: fine-tune the model for behavior, add RAG for knowledge grounding.
+
+---
+
+**Previous:** [Claude Code](claude-code.md) · **Next:** [AI Observability](ai-observability.md) · **Back to:** [Index](../README.md)

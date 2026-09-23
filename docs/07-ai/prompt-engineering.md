@@ -1,6 +1,10 @@
 # Prompt Engineering
 > How to write prompts that get consistent, high-quality outputs from large language models.
 
+**Prerequisites:** None — good place to start
+
+**Related:** [LLM APIs](llm-apis.md) · [Evals](eval-and-evals.md) · [Glossary](../99-reference/glossary.md)
+
 ---
 
 ## Table of Contents
@@ -472,3 +476,7 @@ for version in ["v1", "v2", "v3"]:
 - Log all prompts and responses in production (for debugging and fine-tuning)
 - Keep system prompts and user templates separate
 - Test on adversarial inputs (empty input, very long input, wrong language)
+
+---
+
+**Previous:** [Kafka](../04-streaming/kafka-reference.md) · **Next:** [LLM APIs](llm-apis.md) · **Back to:** [Index](../README.md)

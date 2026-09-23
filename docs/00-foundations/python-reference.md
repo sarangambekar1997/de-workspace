@@ -1,6 +1,10 @@
 # Python Reference
 > From first script to production-grade data engineering patterns.
 
+**Prerequisites:** [DE Concepts](de-concepts.md)
+
+**Related:** [PySpark](../02-processing/pyspark-reference.md) · [Airflow](../03-orchestration/airflow-reference.md) · [LLM APIs](../07-ai/llm-apis.md) · [Glossary](../99-reference/glossary.md)
+
 ---
 
 ## Table of Contents
@@ -1046,3 +1050,7 @@ def incremental_load(conn, source_conn, table: str) -> None:
         save_watermark(conn, table, max(r["updated_at"] for r in rows))
         logger.info("Loaded %d new rows into %s", len(rows), table)
 ```
+
+---
+
+**Previous:** [SQL](sql-reference.md) · **Next:** [Data Modeling](../01-storage/data-modeling.md) · **Back to:** [Index](../README.md)

@@ -1,6 +1,10 @@
 # SQL Reference
 > A developer-focused guide from basic queries to advanced patterns.
 
+**Prerequisites:** [DE Concepts](de-concepts.md)
+
+**Related:** [Data Modeling](../01-storage/data-modeling.md) · [Snowflake](../01-storage/snowflake-reference.md) · [dbt](../02-processing/dbt-reference.md) · [Glossary](../99-reference/glossary.md)
+
 ---
 
 ## Table of Contents
@@ -639,3 +643,7 @@ REFRESH MATERIALIZED VIEW dept_summary;
 | Index | Speeding up lookups on a column |
 | Transaction | Multiple writes that must succeed or fail together |
 | Window function | Per-row calculation referencing sibling rows |
+
+---
+
+**Previous:** [DE Concepts](de-concepts.md) · **Next:** [Python for DE](python-reference.md) · **Back to:** [Index](../README.md)

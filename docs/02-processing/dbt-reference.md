@@ -1,6 +1,10 @@
 # dbt Reference
 > From first model to production-grade ELT transformation layer.
 
+**Prerequisites:** [SQL](../00-foundations/sql-reference.md) · [Data Modeling](../01-storage/data-modeling.md)
+
+**Related:** [Snowflake](../01-storage/snowflake-reference.md) · [Data Quality](../05-quality-governance/data-quality.md) · [Git for DE](../00-foundations/git-for-de.md) · [Airflow](../03-orchestration/airflow-reference.md) · [Glossary](../99-reference/glossary.md)
+
 ---
 
 ## Plain English: What Is dbt?
@@ -923,3 +927,7 @@ A: In a large dbt project with 500+ models, running `dbt build` on every PR take
 
 **Q: How does dbt handle environments (dev vs prod)?**
 A: dbt uses profiles.yml to define target environments. In dev, models are built in a personal schema (`dbt_alice`). In prod, models build in the configured production schema. The `ref()` macro always resolves to the current environment's schema — you never hardcode schema names. This means the same SQL runs correctly in both environments without changes.
+
+---
+
+**Previous:** [Snowflake](../01-storage/snowflake-reference.md) · **Next:** [Data Quality](../05-quality-governance/data-quality.md) · **Back to:** [Index](../README.md)

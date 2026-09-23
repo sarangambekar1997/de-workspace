@@ -1,6 +1,10 @@
 # Docker Reference
 > From first container to production-ready data pipeline environments.
 
+**Prerequisites:** [Linux & Bash](../00-foundations/linux-bash.md)
+
+**Related:** [Airflow](../03-orchestration/airflow-reference.md) · [Terraform](terraform-for-de.md) · [Local LLMs](../07-ai/local-llms.md) · [Glossary](../99-reference/glossary.md)
+
 ---
 
 ## Table of Contents
@@ -567,3 +571,7 @@ COPY config/ ./config/
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 ```
+
+---
+
+**Previous:** [Cloud Storage](../01-storage/cloud-storage.md) · **Next:** [Terraform](terraform-for-de.md) · **Back to:** [Index](../README.md)

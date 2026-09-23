@@ -1,6 +1,10 @@
 # Cloud Storage for Data Engineers
 > S3, GCS, and ADLS — patterns, conventions, and tools every DE needs.
 
+**Prerequisites:** [DE Concepts](../00-foundations/de-concepts.md)
+
+**Related:** [Apache Iceberg](apache-iceberg.md) · [Databricks](../02-processing/databricks-reference.md) · [Terraform](../06-infrastructure/terraform-for-de.md) · [Glossary](../99-reference/glossary.md)
+
 ---
 
 ## Table of Contents
@@ -556,3 +560,7 @@ df.write \
     .partitionBy("order_date") \
     .parquet("s3://my-bucket/silver/orders/")
 ```
+
+---
+
+**Previous:** [Git for DE](../00-foundations/git-for-de.md) · **Next:** [Docker](../06-infrastructure/docker-reference.md) · **Back to:** [Index](../README.md)

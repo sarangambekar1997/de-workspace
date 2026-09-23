@@ -1,6 +1,10 @@
 # Apache Kafka Reference
 > From first message to production-grade event streaming pipelines.
 
+**Prerequisites:** [DE Concepts](../00-foundations/de-concepts.md) · [Python for DE](../00-foundations/python-reference.md)
+
+**Related:** [PySpark](../02-processing/pyspark-reference.md) · [Databricks](../02-processing/databricks-reference.md) · [Data Quality](../05-quality-governance/data-quality.md) · [Glossary](../99-reference/glossary.md)
+
 ---
 
 ## Plain English: What Is Kafka and Why Do We Need It?
@@ -673,3 +677,7 @@ A: Without a key, messages are distributed round-robin across partitions — goo
 
 **Q: What is the difference between Kafka and a traditional message queue like RabbitMQ?**
 A: In a queue, each message is consumed by exactly one consumer and deleted after acknowledgment. In Kafka, messages are written to a log and retained for a configurable period — any number of consumer groups can read them independently, and consumers can rewind and reprocess. Kafka scales to millions of messages/sec; queues are better for task distribution and work queues where retention isn't needed.
+
+---
+
+**Previous:** [Apache Iceberg](../01-storage/apache-iceberg.md) · **Next:** [Prompt Engineering](../07-ai/prompt-engineering.md) · **Back to:** [Index](../README.md)

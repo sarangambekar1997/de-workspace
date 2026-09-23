@@ -1,6 +1,10 @@
 # RAG (Retrieval-Augmented Generation)
 > Build LLM applications that answer questions from your own data — not just training data.
 
+**Prerequisites:** [Embeddings](embeddings.md) · [LLM APIs](llm-apis.md)
+
+**Related:** [Vector Databases](vector-databases.md) · [Evals](eval-and-evals.md) · [LangChain & LlamaIndex](langchain-llamaindex.md) · [Glossary](../99-reference/glossary.md)
+
 ---
 
 ## Plain English: What Is RAG and Why Do You Need It?
@@ -620,3 +624,7 @@ A: After initial retrieval (fast, ANN search), re-ranking uses a more expensive 
 
 **Q: How do you evaluate a RAG pipeline?**
 A: Four metrics: (1) Faithfulness — does the answer only use information from retrieved context? (2) Answer relevance — does it actually answer the question? (3) Context precision — how many retrieved chunks were actually useful? (4) Context recall — did retrieval find all the relevant information? Use LLM-as-judge for automated evaluation, and maintain a golden test set of question-answer pairs to catch regressions when you change chunking, retrieval, or the generation prompt.
+
+---
+
+**Previous:** [Embeddings](embeddings.md) · **Next:** [Vector Databases](vector-databases.md) · **Back to:** [Index](../README.md)

@@ -1,6 +1,10 @@
 # Git for Data Engineers
 > Version control workflows tailored to data pipelines, dbt projects, and team collaboration.
 
+**Prerequisites:** [Linux & Bash](linux-bash.md)
+
+**Related:** [dbt](../02-processing/dbt-reference.md) · [Terraform](../06-infrastructure/terraform-for-de.md) · [Claude Code](../07-ai/claude-code.md) · [Glossary](../99-reference/glossary.md)
+
 ---
 
 ## Table of Contents
@@ -556,3 +560,7 @@ git log --follow --oneline models/fct_orders.sql
 git reflog                        # shows all recent HEAD movements
 git checkout -b recovered abc1234 # create branch from that commit
 ```
+
+---
+
+**Previous:** [Linux & Bash](linux-bash.md) · **Next:** [Cloud Storage](../01-storage/cloud-storage.md) · **Back to:** [Index](../README.md)

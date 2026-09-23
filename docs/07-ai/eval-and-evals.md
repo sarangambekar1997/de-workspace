@@ -1,6 +1,10 @@
 # AI Evaluation & Evals
 > How to measure, test, and improve LLM application quality systematically.
 
+**Prerequisites:** [LLM APIs](llm-apis.md) · [Prompt Engineering](prompt-engineering.md)
+
+**Related:** [RAG](rag.md) · [AI Observability](ai-observability.md) · [Data Quality](../05-quality-governance/data-quality.md) · [Glossary](../99-reference/glossary.md)
+
 ---
 
 ## Table of Contents
@@ -541,3 +545,7 @@ def ci_eval_gate(rag_fn, eval_dataset: list[dict],
 if not ci_eval_gate(my_rag_pipeline, eval_dataset):
     raise SystemExit("Eval gate failed — not deploying")
 ```
+
+---
+
+**Previous:** [LangChain & LlamaIndex](langchain-llamaindex.md) · **Next:** [MLflow](mlflow.md) · **Back to:** [Index](../README.md)

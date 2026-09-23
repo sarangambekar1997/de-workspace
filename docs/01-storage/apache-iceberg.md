@@ -1,6 +1,10 @@
 # Apache Iceberg
 > An open table format that brings ACID transactions, schema evolution, and time travel to any data lake.
 
+**Prerequisites:** [Cloud Storage](cloud-storage.md) · [PySpark](../02-processing/pyspark-reference.md)
+
+**Related:** [Databricks](../02-processing/databricks-reference.md) · [Snowflake](snowflake-reference.md) · [DE Concepts](../00-foundations/de-concepts.md) · [Glossary](../99-reference/glossary.md)
+
 ---
 
 ## Plain English
@@ -447,3 +451,7 @@ A: Iceberg tracks columns by a stable integer ID, not by name. When you rename a
 
 **Q: What is copy-on-write vs merge-on-read?**
 A: Copy-on-write rewrites entire data files when rows are updated/deleted — reads are fast because there's only one file per row, but writes are expensive. Merge-on-read writes small delete/delta files alongside data files and merges them at read time — writes are fast, reads are slightly slower. Choose copy-on-write for read-heavy, update-infrequent tables; merge-on-read for frequent upserts.
+
+---
+
+**Previous:** [Databricks](../02-processing/databricks-reference.md) · **Next:** [Kafka](../04-streaming/kafka-reference.md) · **Back to:** [Index](../README.md)

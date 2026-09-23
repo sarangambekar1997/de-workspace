@@ -1,6 +1,10 @@
 # AI Observability
 > Monitor, trace, and debug LLM applications in production — cost, latency, quality, and errors.
 
+**Prerequisites:** [LLM APIs](llm-apis.md) · [Evals](eval-and-evals.md)
+
+**Related:** [LangChain & LlamaIndex](langchain-llamaindex.md) · [Data Quality](../05-quality-governance/data-quality.md) · [Glossary](../99-reference/glossary.md)
+
 ---
 
 ## Plain English
@@ -575,3 +579,7 @@ A: Four categories: (1) Infrastructure — latency (P50/P95/P99), error rate, th
 
 **Q: How do you detect when an LLM pipeline degrades without users reporting it?**
 A: (1) Run automated quality evals on a sample of real traffic using LLM-as-judge — score faithfulness and relevance; (2) track score distributions over time and alert on statistically significant drops (KS test); (3) monitor cost-per-call — unexpected increases often mean prompt bloat; (4) log all inputs/outputs and do random manual spot-checks; (5) track thumbs-up/down or implicit signals (follow-up questions often indicate a bad answer).
+
+---
+
+**Previous:** [Fine-Tuning](fine-tuning.md) · **Next:** [Local LLMs](local-llms.md) · **Back to:** [Index](../README.md)

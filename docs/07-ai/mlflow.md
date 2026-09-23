@@ -1,6 +1,10 @@
 # MLflow
 > Experiment tracking, model registry, and serving for ML and LLM workflows.
 
+**Prerequisites:** [Python for DE](../00-foundations/python-reference.md)
+
+**Related:** [Databricks](../02-processing/databricks-reference.md) · [Fine-Tuning](fine-tuning.md) · [Evals](eval-and-evals.md) · [Glossary](../99-reference/glossary.md)
+
 ---
 
 ## Table of Contents
@@ -500,3 +504,7 @@ def check_model_drift_and_retrain(**context):
         # Trigger Airflow DAG or Databricks job
         trigger_retraining_pipeline()
 ```
+
+---
+
+**Previous:** [Evals](eval-and-evals.md) · **Next:** [Claude Code](claude-code.md) · **Back to:** [Index](../README.md)

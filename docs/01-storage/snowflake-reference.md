@@ -1,6 +1,10 @@
 # Snowflake Reference
 > From first query to production-grade cloud data warehouse patterns.
 
+**Prerequisites:** [SQL](../00-foundations/sql-reference.md)
+
+**Related:** [dbt](../02-processing/dbt-reference.md) · [Data Modeling](data-modeling.md) · [Terraform](../06-infrastructure/terraform-for-de.md) · [Glossary](../99-reference/glossary.md)
+
 ---
 
 ## Table of Contents
@@ -676,3 +680,7 @@ SELECT dept,
 FROM employees
 GROUP BY dept;
 ```
+
+---
+
+**Previous:** [Terraform](../06-infrastructure/terraform-for-de.md) · **Next:** [dbt](../02-processing/dbt-reference.md) · **Back to:** [Index](../README.md)

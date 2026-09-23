@@ -1,6 +1,10 @@
 # Databricks Reference
 > From first notebook to production-grade lakehouse pipelines.
 
+**Prerequisites:** [PySpark](pyspark-reference.md) · [Cloud Storage](../01-storage/cloud-storage.md)
+
+**Related:** [Apache Iceberg](../01-storage/apache-iceberg.md) · [MLflow](../07-ai/mlflow.md) · [Data Quality](../05-quality-governance/data-quality.md) · [Glossary](../99-reference/glossary.md)
+
 ---
 
 ## Table of Contents
@@ -729,3 +733,7 @@ def log_pipeline_run(pipeline_name, records_processed, duration_sec, status):
     df.write.format("delta").mode("append") \
       .saveAsTable("analytics.ops.pipeline_metrics")
 ```
+
+---
+
+**Previous:** [PySpark](pyspark-reference.md) · **Next:** [Apache Iceberg](../01-storage/apache-iceberg.md) · **Back to:** [Index](../README.md)

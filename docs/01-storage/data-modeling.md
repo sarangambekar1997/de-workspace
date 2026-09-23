@@ -1,6 +1,10 @@
 # Data Modeling
 > Designing data structures that are queryable, maintainable, and performant at scale.
 
+**Prerequisites:** [SQL](../00-foundations/sql-reference.md) · [DE Concepts](../00-foundations/de-concepts.md)
+
+**Related:** [dbt](../02-processing/dbt-reference.md) · [Snowflake](snowflake-reference.md) · [Glossary](../99-reference/glossary.md)
+
 ---
 
 ## Table of Contents
@@ -658,3 +662,7 @@ FROM {{ ref('int_orders__enriched') }}
    Problem: slow joins, no pre-computed date attributes
    Fix:     Use INTEGER date keys (YYYYMMDD) and a pre-populated dim_date
 ```
+
+---
+
+**Previous:** [Python for DE](../00-foundations/python-reference.md) · **Next:** [Linux & Bash](../00-foundations/linux-bash.md) · **Back to:** [Index](../README.md)

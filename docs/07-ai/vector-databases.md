@@ -1,6 +1,10 @@
 # Vector Databases
 > Storing, indexing, and querying embeddings at scale for RAG, semantic search, and similarity lookups.
 
+**Prerequisites:** [Embeddings](embeddings.md)
+
+**Related:** [RAG](rag.md) · [SQL](../00-foundations/sql-reference.md) · [Glossary](../99-reference/glossary.md)
+
 ---
 
 ## Table of Contents
@@ -499,3 +503,7 @@ health = index_health_check(index)
 if health["index_fullness_pct"] > 80:
     print("WARNING: index is >80% full — consider scaling")
 ```
+
+---
+
+**Previous:** [RAG](rag.md) · **Next:** [AI Agents](ai-agents.md) · **Back to:** [Index](../README.md)

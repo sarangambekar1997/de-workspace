@@ -1,7 +1,9 @@
+<!-- Copy into the right topic folder (docs/NN-topic/). Links below assume that location. -->
 # Topic Name
 > One-line summary: what this is and why a data engineer cares.
 
 **Prerequisites:** [Guide A](../00-foundations/guide-a.md) · [Guide B](../01-storage/guide-b.md)
+
 **Related:** [Guide C](../02-processing/guide-c.md) · [Glossary](../99-reference/glossary.md)
 
 ---
@@ -85,4 +87,4 @@ A: Answer in 3–5 sentences. Explain the *why*, and mention a trade-off.
 
 ---
 
-**Next:** [Next guide in the learning path](../02-processing/next-guide.md) · **Back to:** [Index](../README.md)
+**Previous:** [Previous guide](../01-storage/previous-guide.md) · **Next:** [Next guide in the learning path](../02-processing/next-guide.md) · **Back to:** [Index](../README.md)

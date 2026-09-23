@@ -1,6 +1,10 @@
 # LangChain & LlamaIndex
 > Frameworks for building RAG pipelines, agents, and LLM applications with less boilerplate.
 
+**Prerequisites:** [RAG](rag.md) · [AI Agents](ai-agents.md)
+
+**Related:** [AI Observability](ai-observability.md) · [Evals](eval-and-evals.md) · [Glossary](../99-reference/glossary.md)
+
 ---
 
 ## Table of Contents
@@ -519,3 +523,7 @@ Use LlamaIndex when:
   ✓ Working with large document collections
   ✓ Want higher-level RAG abstractions out of the box
 ```
+
+---
+
+**Previous:** [AI Agents](ai-agents.md) · **Next:** [Evals](eval-and-evals.md) · **Back to:** [Index](../README.md)

@@ -1,6 +1,10 @@
 # Apache Airflow Reference
 > From first DAG to production-grade pipeline orchestration.
 
+**Prerequisites:** [Python for DE](../00-foundations/python-reference.md) · [Docker](../06-infrastructure/docker-reference.md)
+
+**Related:** [dbt](../02-processing/dbt-reference.md) · [PySpark](../02-processing/pyspark-reference.md) · [Data Quality](../05-quality-governance/data-quality.md) · [Glossary](../99-reference/glossary.md)
+
 ---
 
 ## Plain English: What Is Airflow and Why Do You Need It?
@@ -877,3 +881,6 @@ A: Don't pass the file contents through XComs — push the path or identifier in
 **Q: What's the difference between `LocalExecutor`, `CeleryExecutor`, and `KubernetesExecutor`?**
 A: `LocalExecutor` runs tasks as subprocesses on the same machine as the scheduler — simple, no extra infrastructure, good for small deployments. `CeleryExecutor` distributes tasks to a pool of separate worker machines via a message broker (Redis/RabbitMQ) — scalable, but requires maintaining workers and the broker. `KubernetesExecutor` launches each task instance in its own Kubernetes pod — best for cloud-native deployments, perfect isolation, no idle workers (pods spin up/down per task), but has pod startup overhead (~30s) that makes it poor for fast, short tasks.
 
+---
+
+**Previous:** [Data Quality](../05-quality-governance/data-quality.md) · **Next:** [PySpark](../02-processing/pyspark-reference.md) · **Back to:** [Index](../README.md)

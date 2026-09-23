@@ -1,6 +1,10 @@
 # AI Agents & Tool Use
 > Building LLM systems that take actions, use tools, and complete multi-step tasks autonomously.
 
+**Prerequisites:** [LLM APIs](llm-apis.md) · [Prompt Engineering](prompt-engineering.md)
+
+**Related:** [LangChain & LlamaIndex](langchain-llamaindex.md) · [Claude Code](claude-code.md) · [Evals](eval-and-evals.md) · [Glossary](../99-reference/glossary.md)
+
 ---
 
 ## Table of Contents
@@ -573,3 +577,7 @@ FINAL_ANSWER_TOOL = {
 # Force a structured output even from a free-form agent
 # The agent uses its tools then calls final_answer with the structured result
 ```
+
+---
+
+**Previous:** [Vector Databases](vector-databases.md) · **Next:** [LangChain & LlamaIndex](langchain-llamaindex.md) · **Back to:** [Index](../README.md)

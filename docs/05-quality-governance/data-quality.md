@@ -1,6 +1,10 @@
 # Data Quality for Data Engineers
 > Frameworks, patterns, and tools for building reliable data pipelines.
 
+**Prerequisites:** [SQL](../00-foundations/sql-reference.md)
+
+**Related:** [dbt](../02-processing/dbt-reference.md) · [Airflow](../03-orchestration/airflow-reference.md) · [Evals](../07-ai/eval-and-evals.md) · [Glossary](../99-reference/glossary.md)
+
 ---
 
 ## Table of Contents
@@ -208,7 +212,7 @@ print(f"Passed: {sum(r['passed'] for r in results)}/{len(results)}")
 
 ## dbt Tests
 
-See also [dbt Reference](dbt-reference.md) for full dbt test coverage.
+See also [dbt Reference](../02-processing/dbt-reference.md) for full dbt test coverage.
 
 ```yaml
 # Four built-in generic tests
@@ -713,3 +717,7 @@ class DQRunner:
             names = ", ".join(r["check"] for r in failed)
             raise ValueError(f"DQ checks failed: {names}")
 ```
+
+---
+
+**Previous:** [dbt](../02-processing/dbt-reference.md) · **Next:** [Airflow](../03-orchestration/airflow-reference.md) · **Back to:** [Index](../README.md)

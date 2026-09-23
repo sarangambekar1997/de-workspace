@@ -1,6 +1,10 @@
 # Terraform for Data Engineers
 > Provision and manage cloud data infrastructure as code — S3, IAM, Snowflake, Databricks, and more.
 
+**Prerequisites:** [Cloud Storage](../01-storage/cloud-storage.md) · [Git for DE](../00-foundations/git-for-de.md)
+
+**Related:** [Snowflake](../01-storage/snowflake-reference.md) · [Databricks](../02-processing/databricks-reference.md) · [Docker](docker-reference.md) · [Glossary](../99-reference/glossary.md)
+
 ---
 
 ## Table of Contents
@@ -765,3 +769,7 @@ crash.log
 override.tf
 override.tf.json
 ```
+
+---
+
+**Previous:** [Docker](docker-reference.md) · **Next:** [Snowflake](../01-storage/snowflake-reference.md) · **Back to:** [Index](../README.md)

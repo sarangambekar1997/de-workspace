@@ -1,6 +1,10 @@
 # LLM APIs & SDKs
 > Working with Anthropic Claude and OpenAI APIs — from first call to production patterns.
 
+**Prerequisites:** [Python for DE](../00-foundations/python-reference.md) · [Prompt Engineering](prompt-engineering.md)
+
+**Related:** [AI Agents](ai-agents.md) · [AI Observability](ai-observability.md) · [Glossary](../99-reference/glossary.md)
+
 ---
 
 ## Table of Contents
@@ -626,3 +630,7 @@ def log_llm_call(func):
 def create_message(client, **kwargs):
     return client.messages.create(**kwargs)
 ```
+
+---
+
+**Previous:** [Prompt Engineering](prompt-engineering.md) · **Next:** [Embeddings](embeddings.md) · **Back to:** [Index](../README.md)

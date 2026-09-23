@@ -1,6 +1,10 @@
 # PySpark Reference
 > From first DataFrame to production-grade distributed data processing.
 
+**Prerequisites:** [Python for DE](../00-foundations/python-reference.md) · [SQL](../00-foundations/sql-reference.md)
+
+**Related:** [Databricks](databricks-reference.md) · [Apache Iceberg](../01-storage/apache-iceberg.md) · [Kafka](../04-streaming/kafka-reference.md) · [Glossary](../99-reference/glossary.md)
+
 ---
 
 ## Plain English: What Is Spark and Why Not Just Use Pandas?
@@ -1017,3 +1021,7 @@ A: Skew is when one partition has far more data than others — one executor doe
 
 **Q: What is the difference between Spark Structured Streaming and batch processing?**
 A: Batch processing reads a bounded dataset, processes it, and writes results — has a clear start and end. Structured Streaming reads from an unbounded source (Kafka, S3 files) continuously, processing micro-batches or trigger-based intervals, with a checkpoint to track progress. The API is the same (DataFrame operations) but streaming adds constraints: only certain aggregations work, joins have limitations, and you must manage state and watermarks.
+
+---
+
+**Previous:** [Airflow](../03-orchestration/airflow-reference.md) · **Next:** [Databricks](databricks-reference.md) · **Back to:** [Index](../README.md)

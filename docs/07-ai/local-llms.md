@@ -1,6 +1,10 @@
 # Local & Open-Source LLMs
 > Run powerful language models on your own machine — no API keys, no data leaving your environment.
 
+**Prerequisites:** [LLM APIs](llm-apis.md)
+
+**Related:** [Docker](../06-infrastructure/docker-reference.md) · [Fine-Tuning](fine-tuning.md) · [RAG](rag.md) · [Glossary](../99-reference/glossary.md)
+
 ---
 
 ## Plain English
@@ -509,3 +513,7 @@ A: Quantization reduces the number of bits used to represent each model weight, 
 
 **Q: What is Ollama and how does it differ from vLLM?**
 A: Both serve local LLMs, but for different use cases. Ollama is a developer-friendly tool for running models locally with a simple CLI and OpenAI-compatible API — great for development and single-user inference. vLLM is a production inference server focused on maximum throughput via PagedAttention and continuous batching — designed for serving hundreds of concurrent requests, 2-24x faster than naive serving. Use Ollama for development; vLLM for production deployment.
+
+---
+
+**Previous:** [AI Observability](ai-observability.md) · **Back to:** [Index](../README.md)

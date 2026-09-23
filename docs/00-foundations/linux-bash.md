@@ -1,6 +1,10 @@
 # Linux & Bash for Data Engineers
 > Essential command-line skills every data engineer uses daily.
 
+**Prerequisites:** None — good place to start
+
+**Related:** [Git for DE](git-for-de.md) · [Docker](../06-infrastructure/docker-reference.md) · [Glossary](../99-reference/glossary.md)
+
 ---
 
 ## Table of Contents
@@ -612,3 +616,7 @@ time python pipeline.py --date 2024-03-15
 # Run multiple commands in parallel
 parallel python process.py --date {} ::: 2024-01-01 2024-01-02 2024-01-03
 ```
+
+---
+
+**Previous:** [Data Modeling](../01-storage/data-modeling.md) · **Next:** [Git for DE](git-for-de.md) · **Back to:** [Index](../README.md)

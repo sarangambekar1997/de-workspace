@@ -1,6 +1,10 @@
 # Claude Code
 > Anthropic's official CLI and agentic coding tool — from first command to advanced workflows.
 
+**Prerequisites:** [Git for DE](../00-foundations/git-for-de.md) · [Linux & Bash](../00-foundations/linux-bash.md)
+
+**Related:** [AI Agents](ai-agents.md) · [LLM APIs](llm-apis.md) · [Glossary](../99-reference/glossary.md)
+
 ---
 
 ## Table of Contents
@@ -513,3 +517,7 @@ jobs:
   and task dependencies with >> to use the TaskFlow API (@task decorator).
   Keep the same logic and schedules. Run the tests after each migration.
 ```
+
+---
+
+**Previous:** [MLflow](mlflow.md) · **Next:** [Fine-Tuning](fine-tuning.md) · **Back to:** [Index](../README.md)

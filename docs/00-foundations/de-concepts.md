@@ -1,6 +1,10 @@
 # Data Engineering — Essential Concepts
 > A developer-focused reference covering the core ideas every data engineer needs to know.
 
+**Prerequisites:** None — good place to start
+
+**Related:** [Data Modeling](../01-storage/data-modeling.md) · [Cloud Storage](../01-storage/cloud-storage.md) · [SQL](sql-reference.md) · [Glossary](../99-reference/glossary.md)
+
 ---
 
 ## Plain English: What Does a Data Engineer Actually Do?
@@ -729,3 +733,7 @@ A: A data lake stores raw files in any format on cheap object storage (S3) — f
 
 **Q: What is a data contract and when would you need one?**
 A: A data contract is a formal agreement between the producer of a dataset and its consumers — specifying schema, data types, SLA (freshness guarantee), quality rules, and ownership. You need one when multiple teams depend on a dataset: the contract prevents the upstream team from silently breaking downstream pipelines with schema changes or delayed delivery.
+
+---
+
+**Next:** [SQL](sql-reference.md) · **Back to:** [Index](../README.md)
