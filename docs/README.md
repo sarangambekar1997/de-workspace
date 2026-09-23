@@ -38,6 +38,7 @@ Each guide follows a **Basic → Intermediate → Advanced** progression with re
 |-------|------------------|
 | [Snowflake Reference](snowflake-reference.md) | Architecture, virtual warehouses, semi-structured data, streams & tasks, RBAC |
 | [dbt Reference](dbt-reference.md) | Models, materializations, tests, macros, incremental models, snapshots, CI/CD |
+| [Apache Iceberg](apache-iceberg.md) | Open table format, hidden partitioning, schema evolution, time travel, ACID, AWS Glue/Athena |
 
 ### Quality & Observability
 
@@ -59,6 +60,10 @@ Each guide follows a **Basic → Intermediate → Advanced** progression with re
 | [Eval & Evals](eval-and-evals.md) | Unit tests for LLMs, LLM-as-judge, RAGAS, regression testing, eval-driven development |
 | [MLflow](mlflow.md) | Experiment tracking, model registry, serving, custom models, DE integration |
 | [Claude Code](claude-code.md) | CLI setup, CLAUDE.md, MCP servers, hooks, skills, CI/headless mode, DE workflows |
+| [Apache Iceberg](apache-iceberg.md) | Table format, hidden partitioning, schema evolution, time travel, ACID, AWS Glue/Athena |
+| [Fine-Tuning LLMs](fine-tuning.md) | LoRA/PEFT, full fine-tuning vs RAG decision, Hugging Face + OpenAI fine-tuning API |
+| [AI Observability](ai-observability.md) | Cost/latency/quality monitoring, LangSmith, Langfuse, OpenTelemetry, RAG tracing |
+| [Local LLMs](local-llms.md) | Ollama, vLLM, Hugging Face, quantization (4-bit/fp16), local RAG, hardware guide |
 
 ### Infrastructure
 
@@ -127,6 +132,9 @@ Each guide follows a **Basic → Intermediate → Advanced** progression with re
 8. [Eval & Evals](eval-and-evals.md) — measure and improve quality
 9. [MLflow](mlflow.md) — bring it back to the data pipeline
 10. [Claude Code](claude-code.md) — use AI to build AI things
+11. [Fine-Tuning LLMs](fine-tuning.md) — when RAG isn't enough
+12. [AI Observability](ai-observability.md) — monitor production LLM apps
+13. [Local LLMs](local-llms.md) — run models without the API bill
 
 ---
 
@@ -148,6 +156,10 @@ Each guide follows a **Basic → Intermediate → Advanced** progression with re
 | LLM with external actions | AI agents + tool use |
 | Measure LLM app quality | Evals + LLM-as-judge |
 | Track ML experiments | MLflow |
+| Customize a model for your domain | Fine-tuning (LoRA/PEFT) |
+| Monitor LLM app in production | AI Observability (LangSmith/Langfuse) |
+| Run models privately / offline | Local LLMs (Ollama/vLLM) |
+| Open table format for big data | Apache Iceberg |
 
 ### File format cheat sheet
 
@@ -155,7 +167,8 @@ Each guide follows a **Basic → Intermediate → Advanced** progression with re
 |--------|----------|
 | **Parquet** | Columnar analytics, Spark, large-scale reads |
 | **Avro** | Kafka messages, schema evolution, row-based streaming |
-| **Delta** | Lakehouse tables with ACID, time travel, MERGE |
+| **Delta** | Lakehouse tables with ACID, time travel, MERGE (Databricks-native) |
+| **Iceberg** | Open lakehouse tables — multi-engine (Spark, Flink, Trino, Athena), hidden partitioning |
 | **JSON** | Raw landing zone, semi-structured, API payloads |
 | **CSV** | External hand-offs, small seeds, human-readable exports |
 | **ORC** | Hive/Hadoop ecosystems (prefer Parquet elsewhere) |

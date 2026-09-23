@@ -3,6 +3,30 @@
 
 ---
 
+## Plain English: What Does a Data Engineer Actually Do?
+
+A **data engineer** builds and maintains the pipes that move data from where it's created to where it's useful.
+
+```
+Source systems        Pipelines (you build these)       Consumers
+─────────────    →    ─────────────────────────    →    ──────────
+Your app's DB         Extract → Transform → Load         Dashboards
+Stripe/Salesforce     Schedule → Monitor → Alert         Data scientists
+Kafka event stream    Handle failures → Retry             ML models
+S3 log files          Ensure quality → Document          Analysts
+```
+
+**An analogy:** Think of a city's water system. The data engineer is the plumber — not the water company (source systems), not the people who drink the water (analysts/scientists), but the person who lays the pipes, ensures the right pressure, filters out the bad stuff, and makes sure the taps always work.
+
+**Common day-to-day tasks:**
+- Build a pipeline that loads Stripe payments into Snowflake every hour
+- Fix a DAG that's been failing because the source API changed its schema
+- Optimize a slow dbt model that's timing out in production
+- Set up monitoring to alert when data is stale or has quality issues
+- Help an analyst understand why their revenue numbers don't match
+
+---
+
 ## Table of Contents
 - [Foundations](#foundations)
 - [Data Modeling](#data-modeling)
@@ -680,3 +704,28 @@ Clickstream      ──────→ Kafka          ──→ Silver (cleaned)
 - **Bronze** — land raw data, never modify it. It's your source of truth for reprocessing.
 - **Silver** — clean, validate, deduplicate. Schema is enforced here.
 - **Gold** — business logic lives here. Star schema, aggregations, metrics.
+
+---
+
+## Interview Questions
+
+**Q: What is the difference between OLTP and OLAP? Give an example of each.**
+A: OLTP (Online Transaction Processing) systems run the business — they handle many small, fast read/write queries like inserting a new order or updating an account balance. Examples: PostgreSQL, MySQL. OLAP (Online Analytical Processing) systems answer business questions — they run few but complex analytical queries over large datasets. Examples: Snowflake, BigQuery. The key difference: OLTP is normalized for writes; OLAP is denormalized for reads.
+
+**Q: What is the medallion architecture and why do we use it?**
+A: Bronze/Silver/Gold — a three-layer pattern where raw data lands in Bronze unchanged, is cleaned and validated in Silver, and becomes business-ready (star schema, aggregates) in Gold. We use it because it separates concerns: Bronze is the safety net (can always reprocess), Silver enforces quality, Gold optimizes for queries. Each layer has a clear owner and a clear definition of done.
+
+**Q: What is the difference between ETL and ELT?**
+A: ETL (Extract-Transform-Load) transforms data before loading it into the destination — traditional, needed when the destination is expensive or slow. ELT (Extract-Load-Transform) loads raw data first, then transforms it using the destination's compute — modern approach enabled by cheap cloud warehouses. dbt is an ELT tool: you load raw data into Snowflake, then transform it with SQL inside Snowflake.
+
+**Q: What is idempotency in data pipelines and why does it matter?**
+A: An idempotent pipeline produces the same result whether it runs once or ten times. It matters because pipelines fail and get retried — if a retry inserts duplicate rows, your data is wrong. Common patterns: use MERGE/upsert instead of INSERT, use DELETE+INSERT with a date partition, or use deduplication logic (dbt's `unique_key` on incremental models).
+
+**Q: What is partitioning and how does it improve query performance?**
+A: Partitioning divides a large table into sub-groups based on a column value (usually date). When you query with a filter on the partition column (`WHERE date = '2024-03-15'`), the query engine only reads that partition's files — skipping 99%+ of the data. Without partitioning, every query scans the entire table. For time-series data (orders, events), partitioning by day is almost always the right choice.
+
+**Q: What is the difference between a data lake, a data warehouse, and a lakehouse?**
+A: A data lake stores raw files in any format on cheap object storage (S3) — flexible but no schema enforcement or transactions. A data warehouse stores structured, optimized data in a proprietary format — great for queries but expensive and schema-rigid. A lakehouse combines both: open file formats (Parquet/Delta/Iceberg) on object storage, with a metadata layer that adds warehouse features (ACID, schema enforcement, time travel). Databricks and Delta Lake are examples.
+
+**Q: What is a data contract and when would you need one?**
+A: A data contract is a formal agreement between the producer of a dataset and its consumers — specifying schema, data types, SLA (freshness guarantee), quality rules, and ownership. You need one when multiple teams depend on a dataset: the contract prevents the upstream team from silently breaking downstream pipelines with schema changes or delayed delivery.

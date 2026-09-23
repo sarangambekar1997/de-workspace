@@ -3,6 +3,38 @@
 
 ---
 
+## Plain English: What Is RAG and Why Do You Need It?
+
+**The problem:** LLMs are trained on public data up to a cutoff date. They know nothing about your internal systems, your data dictionary, your runbooks, or anything that happened after their training.
+
+**RAG is the fix:** Before asking the LLM a question, you look up relevant documents from your own knowledge base and paste them into the prompt. The LLM then answers based on *your* data, not just its training.
+
+```
+Without RAG:
+  User: "What columns does our orders table have?"
+  LLM:  "I don't have information about your specific database schema."
+         (or worse: makes something up)
+
+With RAG:
+  User:      "What columns does our orders table have?"
+  Retriever: [finds the data dictionary entry for the orders table]
+  LLM:       "Based on your data dictionary: order_id (VARCHAR), 
+               customer_id (INT), amount (DECIMAL), status (VARCHAR)..."
+
+The LLM is now a search interface over your own documents.
+```
+
+**The two phases of RAG:**
+```
+1. Indexing (offline, run once):
+   Your docs → Split into chunks → Convert to vectors → Store in vector DB
+
+2. Querying (online, per question):
+   Question → Convert to vector → Find similar chunks → Build prompt → LLM → Answer
+```
+
+---
+
 ## Table of Contents
 
 **Basic**
@@ -568,4 +600,23 @@ for tc in test_cases:
     has_keywords = all(kw.lower() in answer_text.lower() for kw in tc["expected_keywords"])
     print(f"Q: {tc['question'][:50]}")
     print(f"  Faithfulness: {faithfulness:.2f}  Relevance: {relevance:.2f}  Keywords: {has_keywords}")
+
+---
+
+## Interview Questions
+
+**Q: What is RAG and what problem does it solve?**
+A: RAG (Retrieval-Augmented Generation) solves the limitation that LLMs only know what they were trained on. Before generating an answer, a retriever finds relevant documents from your own knowledge base and includes them in the prompt. The LLM then answers based on that retrieved context, not just training data. This enables factual, up-to-date, citable answers over private data without retraining the model.
+
+**Q: What is chunking and why does the chunk size matter?**
+A: Chunking splits large documents into smaller pieces before embedding. Too large: the embedding captures too much meaning, retrieval is imprecise. Too small: each chunk lacks context, the answer may be incomplete. Typical sweet spot: 256–512 tokens with 10–20% overlap between adjacent chunks to preserve context at boundaries. Semantic splits (by paragraph or section) usually beat fixed-size splits.
+
+**Q: What is hybrid search and when is it better than pure vector search?**
+A: Hybrid search combines vector search (semantic similarity) with BM25 keyword search. Pure vector search can miss exact term matches (a product code like "SKU-4872" has no semantic neighbors). Pure keyword search misses paraphrases ("how many orders" won't match "order count"). Hybrid combines both scores (e.g., 50/50 blend or Reciprocal Rank Fusion) and outperforms either alone in practice — most production RAG systems use it.
+
+**Q: What is re-ranking and when would you use it?**
+A: After initial retrieval (fast, ANN search), re-ranking uses a more expensive cross-encoder model to re-score each (query, chunk) pair holistically. The cross-encoder sees both query and document together — more accurate than comparing independent embeddings. Use it when retrieval precision matters more than latency, or when you're retrieving 10-20 candidates and need to select the top 3. Adds ~200-500ms latency but significantly improves relevance.
+
+**Q: How do you evaluate a RAG pipeline?**
+A: Four metrics: (1) Faithfulness — does the answer only use information from retrieved context? (2) Answer relevance — does it actually answer the question? (3) Context precision — how many retrieved chunks were actually useful? (4) Context recall — did retrieval find all the relevant information? Use LLM-as-judge for automated evaluation, and maintain a golden test set of question-answer pairs to catch regressions when you change chunking, retrieval, or the generation prompt.
 ```

@@ -3,6 +3,30 @@
 
 ---
 
+## Plain English: What Is Kafka and Why Do We Need It?
+
+**The problem Kafka solves:**
+
+Imagine your e-commerce app has 10 services that all care about when an order is placed: billing, inventory, notifications, analytics, fraud detection, shipping... With a traditional message queue, you'd need a separate queue connection from the orders service to each consumer. That doesn't scale.
+
+Kafka is a **shared log** — the orders service writes the event once, and any number of consumers read it independently, at their own pace.
+
+```
+Without Kafka:                     With Kafka:
+                                        ┌──────────┐
+Orders → Billing                        │  orders  │←── Orders service (writes once)
+Orders → Inventory   (messy, fragile)   │  topic   │
+Orders → Analytics                      └──────────┘
+Orders → Fraud                               │
+Orders → Notifications         ┌─────────────┼──────────────┐
+                          Billing    Inventory  Analytics  Fraud
+                          (each reads at own pace, independently)
+```
+
+**Key insight:** Kafka keeps messages for days/weeks. A consumer can reprocess old messages, a new consumer can start from the beginning, and a crashed consumer picks up exactly where it left off — none of this is possible with traditional queues.
+
+---
+
 ## Table of Contents
 
 **Basics**
@@ -631,3 +655,22 @@ for msg in consumer:
         dlq_producer.flush()
         consumer.commit()   # commit past the bad message
 ```
+
+---
+
+## Interview Questions
+
+**Q: What is a Kafka partition and why does it exist?**
+A: A partition is a single ordered log within a topic. Partitions enable parallelism — multiple consumers in a group can read from different partitions simultaneously. With 6 partitions, you can have up to 6 consumers processing in parallel. Messages within a partition are strictly ordered; ordering across partitions is not guaranteed. Partition count is a key capacity decision — you can increase it but never decrease.
+
+**Q: What are the three delivery guarantee modes in Kafka?**
+A: (1) At-most-once: messages may be lost, never duplicated — achieved by committing offsets before processing. (2) At-least-once (default): messages are never lost but may be duplicated — achieved by committing offsets after processing. (3) Exactly-once: no loss, no duplicates — requires idempotent producers (`enable.idempotence=true`) and transactional consumers. Exactly-once is the hardest to achieve and has performance overhead.
+
+**Q: What is consumer lag and how do you respond to it?**
+A: Consumer lag is the difference between the latest offset published to a partition and the offset the consumer has processed. Growing lag means the consumer is falling behind the producer. Responses: (1) scale out — add more consumers (up to partition count); (2) optimize consumer processing — parallelize or batch; (3) increase batch size (`max.poll.records`); (4) check if the producer is having a burst — lag may be temporary.
+
+**Q: When would you use a partition key and what happens if you don't use one?**
+A: Without a key, messages are distributed round-robin across partitions — good for even load distribution but no ordering guarantee across messages for the same entity. With a key (e.g., `customer_id`), all messages for that key go to the same partition — guaranteeing ordering per key, enabling stateful processing. Use keys when message ordering per entity matters (e.g., order state transitions must be processed in order).
+
+**Q: What is the difference between Kafka and a traditional message queue like RabbitMQ?**
+A: In a queue, each message is consumed by exactly one consumer and deleted after acknowledgment. In Kafka, messages are written to a log and retained for a configurable period — any number of consumer groups can read them independently, and consumers can rewind and reprocess. Kafka scales to millions of messages/sec; queues are better for task distribution and work queues where retention isn't needed.

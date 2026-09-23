@@ -3,6 +3,32 @@
 
 ---
 
+## Plain English: What Is Spark and Why Not Just Use Pandas?
+
+**The problem Spark solves:**
+
+Pandas is great — until your data doesn't fit in RAM. A single machine has maybe 64GB of memory. A production dataset might be 10TB. Pandas would crash.
+
+Spark runs across a **cluster of machines**. It splits your data into chunks (partitions), distributes them across many machines, processes them in parallel, and combines the results. What would take 8 hours on a single machine takes 10 minutes on a 50-node cluster.
+
+```
+Pandas:                          PySpark:
+One machine                      Driver + 50 Workers
+  - 64GB RAM limit                 - 50 × 64GB = 3.2TB RAM
+  - 1 CPU                          - 50 × 32 cores = 1600 cores
+  - Fast to learn                  - Handles petabytes
+  - Great for < 1GB data           - Same DataFrame API
+
+Rule of thumb:
+  data fits in RAM → Pandas
+  data is 10GB+   → PySpark (or Spark on Databricks)
+```
+
+**Key concept — lazy evaluation:**
+When you write `df.filter(...).groupBy(...).agg(...)`, Spark doesn't actually run anything. It builds a plan. Only when you call an *action* (`.show()`, `.count()`, `.write()`) does Spark execute. This lets Spark optimize the whole chain before touching a single byte of data.
+
+---
+
 ## Table of Contents
 
 **Basics**
@@ -969,3 +995,25 @@ exploded = df.withColumn("tag", F.explode("tags")).drop("tags")
 exploded = df.withColumn("item", F.explode("line_items")) \
              .select("order_id", "item.*")
 ```
+
+---
+
+## Interview Questions
+
+**Q: What is the difference between a transformation and an action in Spark?**
+A: Transformations (filter, select, join, groupBy) are lazy — they build an execution plan but don't process data. Actions (show, count, collect, write) trigger execution. This distinction lets Spark's Catalyst optimizer combine and reorder transformations for efficiency before running anything. Calling `.count()` after each step to debug is an anti-pattern — it forces execution at every step.
+
+**Q: What is a Spark partition and how does it relate to parallelism?**
+A: A partition is a chunk of the data that one executor task processes. With 100 partitions and 10 executor cores, Spark processes 10 partitions at a time. Too few partitions = some cores idle; too many = too much scheduling overhead. Rule of thumb: 2-4 partitions per CPU core, each 128-256MB.
+
+**Q: What is the difference between repartition and coalesce?**
+A: Both change the number of partitions. `repartition(n)` does a full shuffle (expensive) and can both increase and decrease partitions — use when you need an even distribution or more partitions. `coalesce(n)` merges partitions without a shuffle (cheap) but can only decrease — use when writing output to reduce the number of output files.
+
+**Q: What is a broadcast join and when should you use it?**
+A: A broadcast join sends the smaller DataFrame to every executor so the join can happen locally without a shuffle. Use when one table is small enough to fit in executor memory (< 10MB by default, configurable). It's the single most impactful optimization for joins with a small lookup table (e.g., joining orders to a small products table). Enable with `spark.sql.autoBroadcastJoinThreshold` or `F.broadcast(small_df)`.
+
+**Q: What causes data skew and how do you fix it?**
+A: Skew is when one partition has far more data than others — one executor does all the work while others sit idle. Common cause: joining or grouping on a column with very uneven distribution (e.g., a few customers with millions of orders). Fixes: (1) salting — add a random suffix to the key, join, then aggregate; (2) broadcast join the large-key entity; (3) filter out the skewed keys and process them separately; (4) use AQE (`spark.sql.adaptive.enabled=true`) which auto-detects and handles skew.
+
+**Q: What is the difference between Spark Structured Streaming and batch processing?**
+A: Batch processing reads a bounded dataset, processes it, and writes results — has a clear start and end. Structured Streaming reads from an unbounded source (Kafka, S3 files) continuously, processing micro-batches or trigger-based intervals, with a checkpoint to track progress. The API is the same (DataFrame operations) but streaming adds constraints: only certain aggregations work, joins have limitations, and you must manage state and watermarks.

@@ -3,6 +3,36 @@
 
 ---
 
+## Plain English: What Is Airflow and Why Do You Need It?
+
+Imagine you have 10 data tasks that need to run every morning in a specific order:
+1. Download yesterday's sales data from an S3 bucket
+2. Validate the file isn't empty
+3. Load it into a staging table in Snowflake
+4. Run 3 SQL transformations (they can run in parallel)
+5. Send a Slack alert when everything is done
+
+You *could* wire this up with cron jobs and shell scripts — but then: what happens if step 2 fails? Does step 3 still run? How do you rerun just the failed step without re-downloading the file? How do you see a history of what ran when and why it failed last Tuesday?
+
+**Airflow is a job scheduler that understands dependencies.** You write your pipeline as a Python file called a **DAG** (Directed Acyclic Graph) — a graph of tasks with arrows showing what depends on what. Airflow then:
+- Schedules the DAG to run on a timetable (daily, hourly, every 15 minutes)
+- Runs tasks in the right order, in parallel where it can
+- Retries failures automatically
+- Shows you a visual UI with success/failure history for every task of every run
+- Lets you rerun just the failed task (or any task) without redoing the whole pipeline
+
+The name "DAG" just means: tasks are connected (graph), with arrows showing direction (directed), and there are no loops — task A can't eventually depend on itself (acyclic).
+
+**When Airflow is the right tool:**
+- Multi-step pipelines where step B depends on step A finishing first
+- Daily/hourly batch jobs (ETL, data loads, report generation)
+- Workflows that need human-readable monitoring, retries, and alerting
+- Anything more complex than a single cron job
+
+**When it's overkill:** A single script you run once a week. Use cron instead.
+
+---
+
 ## Table of Contents
 
 **Basics**
@@ -824,3 +854,26 @@ default_args = {
     "on_failure_callback": slack_alert,
 }
 ```
+
+---
+
+## Interview Questions
+
+**Q: What is the difference between a DAG's `schedule_interval` and its `start_date`?**
+A: `start_date` is when the DAG becomes eligible to run — Airflow won't schedule runs before this date. `schedule_interval` defines the frequency (e.g., `"0 2 * * *"` = daily at 2am). Critically, Airflow uses *logical dates* (data intervals): a daily DAG with `start_date=2024-01-01` first runs at `2024-01-02 00:00` to process the data interval `2024-01-01`. This offset trips up beginners — the run happens *after* the interval it represents.
+
+**Q: What is `catchup` and when would you set it to False?**
+A: When `catchup=True` (the default), if your DAG was paused for 30 days and you re-enable it, Airflow will schedule 30 backfill runs to cover the missed intervals. Set `catchup=False` when you only want the next upcoming run, not historical backfill. For event-driven or near-real-time pipelines where historical reruns don't make sense (e.g., "send daily email"), always set `catchup=False` to avoid an avalanche of runs on startup.
+
+**Q: What are XComs and what's the limitation you need to know?**
+A: XComs (cross-communications) let tasks share small values: one task pushes a value, another pulls it with `ti.xcom_pull(task_ids="upstream_task")`. In the TaskFlow API, return values are automatically pushed as XComs. The critical limitation: XComs are stored in the Airflow metadata database (Postgres/MySQL). They're for small values like IDs, row counts, or status strings — not DataFrames or large payloads. Storing a 1GB file path is fine; storing the file contents will bloat your metadata DB and cause performance issues.
+
+**Q: What is the difference between `depends_on_past` and `wait_for_downstream`?**
+A: `depends_on_past=True` means a task won't start its run for date D+1 until the same task's run for date D succeeded. Useful for incremental loads where each day builds on the previous. `wait_for_downstream=True` goes further: it waits until the entire downstream pipeline from the previous run has finished before starting. Use `depends_on_past` for sequential processing; use `wait_for_downstream` when you can't start the next batch until the previous batch's consumers have fully finished.
+
+**Q: How would you pass a file path between tasks — what's the right pattern?**
+A: Don't pass the file contents through XComs — push the path or identifier instead. Task A downloads a file to S3 and pushes the S3 URI (`s3://bucket/path/file.parquet`) as an XCom. Task B pulls that URI and reads the file directly. This keeps XComs small and your tasks decoupled. For structured handoffs, consider writing the result to an intermediate table and passing only the table name or run ID downstream.
+
+**Q: What's the difference between `LocalExecutor`, `CeleryExecutor`, and `KubernetesExecutor`?**
+A: `LocalExecutor` runs tasks as subprocesses on the same machine as the scheduler — simple, no extra infrastructure, good for small deployments. `CeleryExecutor` distributes tasks to a pool of separate worker machines via a message broker (Redis/RabbitMQ) — scalable, but requires maintaining workers and the broker. `KubernetesExecutor` launches each task instance in its own Kubernetes pod — best for cloud-native deployments, perfect isolation, no idle workers (pods spin up/down per task), but has pod startup overhead (~30s) that makes it poor for fast, short tasks.
+

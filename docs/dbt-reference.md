@@ -3,6 +3,31 @@
 
 ---
 
+## Plain English: What Is dbt?
+
+**dbt (data build tool) does one thing: run SQL SELECT statements and turn them into tables or views in your warehouse.**
+
+That's it. But it wraps that simple idea with everything you need to build a maintainable transformation layer:
+
+```
+Without dbt:                          With dbt:
+  - Raw SQL files in a folder           - SQL files with dependency tracking
+  - Run manually or via random scripts  - `dbt run` runs everything in the right order
+  - No tests                            - `dbt test` validates data quality
+  - No documentation                    - `dbt docs generate` creates a searchable catalog
+  - No versioning                       - Git-native, PR-reviewable SQL
+  - Copy-paste table references         - ref('model_name') auto-resolves dependencies
+
+Analogy: dbt is to SQL transformations what Airflow is to pipeline scheduling.
+```
+
+**What dbt does NOT do:**
+- Move data from source systems to the warehouse → that's a loader (Fivetran, Airbyte, custom pipelines)
+- Schedule itself → that's Airflow, Prefect, or dbt Cloud's scheduler
+- Run Python → it's SQL-first (though dbt Python models exist for edge cases)
+
+---
+
 ## Table of Contents
 
 **Basics**
@@ -876,3 +901,25 @@ dbt test --select state:modified+   # test them
 # Requires a manifest.json from the last production run
 dbt run --defer --state ./prod_artifacts/ --select state:modified+
 ```
+
+---
+
+## Interview Questions
+
+**Q: What is the difference between ref() and source() in dbt?**
+A: `ref('model_name')` references another dbt model — it resolves to the correct schema/table for the current environment (dev vs prod) and builds the dependency graph. `source('source_name', 'table_name')` references a raw table that dbt doesn't own — it's defined in a sources.yml file and enables source freshness testing. Use `ref()` for dbt-managed models, `source()` for raw/ingested tables.
+
+**Q: What are the four materializations in dbt and when do you use each?**
+A: (1) `view` — creates a SQL view, always fresh, no storage cost — use for staging models; (2) `table` — creates a physical table, fast to query — use when many models read it or the underlying query is expensive; (3) `incremental` — appends or merges only new/changed rows — use for large tables where reprocessing everything is too slow; (4) `ephemeral` — a CTE that gets inlined into the calling model, not materialized at all — use for reusable logic that's only needed once.
+
+**Q: How does dbt handle incremental models and what is the unique_key?**
+A: With `materialized='incremental'`, dbt only processes rows where the filter condition is true (usually `where updated_at > max(updated_at)`). On first run it builds the full table; on subsequent runs it adds only new data. The `unique_key` tells dbt to MERGE instead of INSERT — if a row with that key already exists, it's updated rather than duplicated. This makes the model idempotent.
+
+**Q: What is the difference between a generic test and a singular test in dbt?**
+A: A generic test is a reusable test applied in schema.yml using YAML — like `not_null`, `unique`, `accepted_values`. It can be applied to many columns across many models. A singular test is a custom SQL file in `tests/` that returns rows on failure — use for complex multi-table or business-logic checks that don't fit a generic pattern.
+
+**Q: What is slim CI and why is it important for large dbt projects?**
+A: In a large dbt project with 500+ models, running `dbt build` on every PR takes 2+ hours. Slim CI uses `state:modified+` to run only the models that changed in this PR plus their downstream dependents. It compares the current code against a `manifest.json` from the last production run. This cuts CI time from hours to minutes and enables fast PR feedback loops.
+
+**Q: How does dbt handle environments (dev vs prod)?**
+A: dbt uses profiles.yml to define target environments. In dev, models are built in a personal schema (`dbt_alice`). In prod, models build in the configured production schema. The `ref()` macro always resolves to the current environment's schema — you never hardcode schema names. This means the same SQL runs correctly in both environments without changes.
