@@ -315,7 +315,7 @@ from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
 
 run_query = SQLExecuteQueryOperator(
     task_id="create_daily_summary",
-    conn_id="snowflake_default",       # Connection defined in Airflow UI
+    conn_id="warehouse_default",       # any SQL connection defined in Airflow
     sql="""
         INSERT INTO summary.daily_orders
         SELECT DATE('{{ ds }}') AS order_date,
@@ -463,7 +463,7 @@ Variable.set("last_run_date", "2024-03-15")
 from airflow.hooks.base import BaseHook
 
 # Get connection details (set in Admin > Connections in the UI)
-conn = BaseHook.get_connection("snowflake_default")
+conn = BaseHook.get_connection("warehouse_default")
 conn.host, conn.login, conn.password, conn.schema
 
 # Or use the hook directly (preferred)
@@ -697,11 +697,11 @@ s3 = S3Hook(aws_conn_id="aws_default")
 s3.load_file("/local/path/file.csv", "s3-key/file.csv", bucket_name="my-bucket")
 keys = s3.list_keys(bucket_name="my-bucket", prefix="raw/orders/")
 
-# Snowflake
-from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
-sf = SnowflakeHook(snowflake_conn_id="snowflake_default")
-sf.run("CALL my_stored_procedure()")
-df = sf.get_pandas_df("SELECT * FROM orders LIMIT 1000")
+# Any SQL database or warehouse — resolve the right hook from the connection type
+from airflow.hooks.base import BaseHook
+db = BaseHook.get_connection("warehouse_default").get_hook()   # e.g. Snowflake, BigQuery, Redshift hook
+db.run("CALL refresh_daily_aggregates()")
+df = db.get_pandas_df("SELECT * FROM orders LIMIT 1000")
 ```
 
 ---
@@ -711,46 +711,53 @@ df = sf.get_pandas_df("SELECT * FROM orders LIMIT 1000")
 Build your own operator when you have logic you'll reuse across many DAGs.
 
 ```python
+from airflow.hooks.base import BaseHook
 from airflow.models.baseoperator import BaseOperator
-from airflow.providers.snowflake.hooks.snowflake import SnowflakeHook
 
-class SnowflakeCopyOperator(BaseOperator):
-    """Copy data from an S3 stage into a Snowflake table."""
+class PartitionReloadOperator(BaseOperator):
+    """Idempotently reload one date partition of a table from a staging table.
 
-    # template_fields: Jinja will render these attributes
-    template_fields = ("s3_key", "table", "date")
+    Works with any SQL connection (Postgres, MySQL, Snowflake, BigQuery, Redshift, ...):
+    get_hook() returns the provider-specific hook for the connection type.
+    """
+
+    # template_fields: Jinja renders these attributes before execute()
+    template_fields = ("target_table", "staging_table", "partition_value")
 
     def __init__(
         self,
-        table: str,
-        s3_key: str,
-        date: str,
-        snowflake_conn_id: str = "snowflake_default",
+        target_table: str,
+        staging_table: str,
+        partition_column: str,
+        partition_value: str,
+        conn_id: str = "warehouse_default",
         **kwargs,
     ):
         super().__init__(**kwargs)
-        self.table           = table
-        self.s3_key          = s3_key
-        self.date            = date
-        self.snowflake_conn_id = snowflake_conn_id
+        self.target_table     = target_table
+        self.staging_table    = staging_table
+        self.partition_column = partition_column
+        self.partition_value  = partition_value
+        self.conn_id          = conn_id
 
     def execute(self, context):
-        hook = SnowflakeHook(snowflake_conn_id=self.snowflake_conn_id)
-        sql  = f"""
-            COPY INTO {self.table}
-            FROM @my_stage/{self.s3_key}
-            FILE_FORMAT = (TYPE = PARQUET)
-        """
-        self.log.info("Running: %s", sql)
-        hook.run(sql)
-        return f"Loaded {self.table} from {self.s3_key}"
+        hook = BaseHook.get_connection(self.conn_id).get_hook()
+        statements = [
+            f"DELETE FROM {self.target_table} WHERE {self.partition_column} = '{self.partition_value}'",
+            f"INSERT INTO {self.target_table} SELECT * FROM {self.staging_table} "
+            f"WHERE {self.partition_column} = '{self.partition_value}'",
+        ]
+        self.log.info("Reloading %s for %s", self.target_table, self.partition_value)
+        hook.run(statements, autocommit=False)   # both statements in one transaction
+        return f"Reloaded {self.target_table} for {self.partition_value}"
 
 # Use it in a DAG
-load = SnowflakeCopyOperator(
-    task_id="load_orders",
-    table="staging.orders",
-    s3_key="raw/orders/{{ ds }}/orders.parquet",
-    date="{{ ds }}",
+reload_orders = PartitionReloadOperator(
+    task_id="reload_orders",
+    target_table="analytics.orders",
+    staging_table="staging.orders",
+    partition_column="order_date",
+    partition_value="{{ ds }}",
 )
 ```
 
@@ -848,12 +855,12 @@ def extract(ds=None):
 
 # Use pools to limit concurrency on shared resources
 from airflow.models import Pool
-# In Admin > Pools: create "snowflake_pool" with 10 slots
+# In Admin > Pools: create "warehouse_pool" with 10 slots
 
-heavy_query = SQLExecuteQueryOperator(   # replaces the deprecated SnowflakeOperator
+heavy_query = SQLExecuteQueryOperator(   # generic SQL operator for any database connection
     task_id="heavy_query",
-    conn_id="snowflake_default",
-    pool="snowflake_pool",    # max 10 Snowflake tasks at once
+    conn_id="warehouse_default",
+    pool="warehouse_pool",    # max 10 concurrent warehouse queries
     pool_slots=2,             # this task uses 2 slots
     sql="CALL refresh_daily_aggregates()",
 )
@@ -947,7 +954,7 @@ orders_daily()
 | Map over a runtime list | `process.expand(table=get_tables())` · fixed args: `.partial(conn_id="x").expand(...)` |
 | Run after another DAG's data | Producer task `outlets=[Asset("s3://.../orders")]` → consumer `schedule=[Asset("s3://.../orders")]` |
 | Wait without holding a slot | `mode="reschedule"` or `deferrable=True` operators |
-| Limit concurrency on a resource | `pool="snowflake_pool"`, `pool_slots=2` |
+| Limit concurrency on a resource | `pool="warehouse_pool"`, `pool_slots=2` |
 | Join after a branch | `trigger_rule="none_failed_min_one_success"` |
 | Always run a cleanup task | `trigger_rule="all_done"` |
 | Template variables | `{{ ds }}` · `{{ data_interval_start }}` · `{{ data_interval_end }}` · `{{ run_id }}` · `{{ params.x }}` |

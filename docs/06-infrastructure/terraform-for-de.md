@@ -1,5 +1,5 @@
 # Terraform for Data Engineers
-> Provision and manage cloud data infrastructure as code — S3, IAM, Snowflake, Databricks, and more.
+> Provision and manage cloud data infrastructure as code — storage, access control, warehouses, compute platforms, and orchestration.
 
 **Prerequisites:** [Cloud Storage](../01-storage/cloud-storage.md) · [Git for DE](../00-foundations/git-for-de.md)
 
@@ -41,6 +41,7 @@
 - [AWS Resources for DE](#aws-resources-for-de)
 
 **Advanced**
+- [Warehouses and Data Platforms](#warehouses-and-data-platforms)
 - [Snowflake with Terraform](#snowflake-with-terraform)
 - [Databricks with Terraform](#databricks-with-terraform)
 - [Airflow Infra on AWS](#airflow-infra-on-aws)
@@ -72,8 +73,8 @@ With IaC (Terraform):
 
 **Benefits for data teams specifically:**
 - Reproduce dev/staging/prod environments from the same code
-- Manage Snowflake roles, databases, warehouses without clicking around the UI
-- Provision Databricks workspaces, clusters, and secrets programmatically
+- Manage warehouse databases, roles, and permissions without manual console work
+- Provision compute workspaces, clusters, jobs, and secrets programmatically
 - IAM policies as code — auditable, reviewable, version-controlled
 
 ---
@@ -83,7 +84,7 @@ With IaC (Terraform):
 | Concept | Description |
 |---------|-------------|
 | **Provider** | Plugin that talks to an external API (cloud providers, databases, SaaS platforms) |
-| **Resource** | An infrastructure object to create (S3 bucket, IAM role, Snowflake database) |
+| **Resource** | An infrastructure object to create (storage bucket, IAM role, warehouse database) |
 | **Data source** | Read existing infrastructure without managing it |
 | **Variable** | Input parameter (like a function argument) |
 | **Output** | Exported value (like a return value) |
@@ -126,7 +127,7 @@ infra/
   ├── terraform.tfvars # variable values (DO NOT COMMIT secrets)
   └── modules/
       ├── s3-data-lake/
-      └── snowflake-env/
+      └── warehouse-env/
 ```
 
 ### First resource — S3 bucket
@@ -258,8 +259,8 @@ variable "tags" {
   default     = {}
 }
 
-variable "snowflake_account" {
-  description = "Snowflake account identifier"
+variable "warehouse_account" {
+  description = "Data warehouse account identifier"
   type        = string
   sensitive   = true   # redacted in logs and state display
 }
@@ -269,7 +270,7 @@ variable "snowflake_account" {
 # terraform.tfvars (DO NOT commit to git — add to .gitignore)
 environment       = "prod"
 bucket_name       = "mycompany-data-lake-prod"
-snowflake_account = "myaccount.us-east-1"
+warehouse_account = "myorg-analytics"
 ```
 
 ```hcl
@@ -451,22 +452,54 @@ resource "aws_iam_role_policy_attachment" "data_pipeline" {
 
 ```hcl
 # Store pipeline credentials in AWS Secrets Manager
-resource "aws_secretsmanager_secret" "snowflake_creds" {
-  name        = "/data-platform/${var.environment}/snowflake"
-  description = "Snowflake credentials for data pipeline"
+resource "aws_secretsmanager_secret" "warehouse_creds" {
+  name        = "/data-platform/${var.environment}/warehouse"
+  description = "Warehouse credentials for the data pipeline"
 }
 
-resource "aws_secretsmanager_secret_version" "snowflake_creds" {
-  secret_id = aws_secretsmanager_secret.snowflake_creds.id
+resource "aws_secretsmanager_secret_version" "warehouse_creds" {
+  secret_id = aws_secretsmanager_secret.warehouse_creds.id
   secret_string = jsonencode({
-    account  = var.snowflake_account
-    username = var.snowflake_username
-    password = var.snowflake_password    # pass via env var, never hardcode
+    account  = var.warehouse_account
+    username = var.warehouse_username
+    password = var.warehouse_password    # pass via env var, never hardcode
   })
 }
 
-output "snowflake_secret_arn" {
-  value = aws_secretsmanager_secret.snowflake_creds.arn
+output "warehouse_secret_arn" {
+  value = aws_secretsmanager_secret.warehouse_creds.arn
+}
+```
+
+---
+
+## Warehouses and Data Platforms
+
+Every major warehouse and data platform has a Terraform provider, and the pattern is the same: declare databases or datasets, compute, roles, and grants, and manage them through pull requests. Two short examples on the cloud providers' own services come first; Snowflake and Databricks follow in more depth.
+
+```hcl
+# BigQuery (google provider): dataset + read access for a group
+resource "google_bigquery_dataset" "analytics" {
+  dataset_id = "analytics_${var.environment}"
+  location   = "US"
+}
+
+resource "google_bigquery_dataset_iam_member" "analysts_read" {
+  dataset_id = google_bigquery_dataset.analytics.dataset_id
+  role       = "roles/bigquery.dataViewer"
+  member     = "group:analysts@example.com"
+}
+
+# Amazon Redshift Serverless (aws provider): namespace + workgroup
+resource "aws_redshiftserverless_namespace" "analytics" {
+  namespace_name = "analytics-${var.environment}"
+  db_name        = "analytics"
+}
+
+resource "aws_redshiftserverless_workgroup" "analytics" {
+  namespace_name = aws_redshiftserverless_namespace.analytics.namespace_name
+  workgroup_name = "analytics-${var.environment}"
+  base_capacity  = 8          # RPUs; scales up automatically under load
 }
 ```
 
@@ -781,7 +814,7 @@ resource "aws_mwaa_environment" "airflow" {
 
 6. Single monolithic main.tf with 1000 lines
    Problem: hard to navigate, long plans, blast radius too large
-   Fix:     Split by service (s3.tf, iam.tf, snowflake.tf, databricks.tf)
+   Fix:     Split by service (storage.tf, iam.tf, warehouse.tf, compute.tf)
             or by lifecycle (long-lived vs frequently-changed resources)
 
 7. Not using lifecycle { prevent_destroy = true } on data resources
@@ -880,7 +913,7 @@ A: Drift is when real infrastructure no longer matches the code — usually beca
 A: Don't put them in `.tf` or committed `.tfvars` files. Pass them through environment variables (`TF_VAR_...`) from CI secrets, or read them at apply time from a secrets manager with a data source. Mark variables `sensitive = true` to hide them in output. Remember that values still end up in state, so lock down and encrypt the state backend — or better, have Terraform create the secret *container* and let another process set the value.
 
 **Q: What does a data engineer typically manage with Terraform?**
-A: Storage (buckets with encryption, versioning, and lifecycle rules), IAM roles and policies for pipelines, Snowflake objects (databases, schemas, warehouses, roles, grants, service users), Databricks workspaces, clusters, jobs, and Unity Catalog objects, Kafka topics, and orchestration environments like MWAA or Composer. Anything that should be identical across environments and reviewable in a PR is a good candidate.
+A: Storage (buckets with encryption, versioning, and lifecycle rules), IAM roles and policies for pipelines, warehouse objects (databases, schemas, compute, roles, grants, service users), compute platforms (workspaces, clusters, jobs, catalogs), Kafka topics, and orchestration environments like MWAA or Composer. Anything that should be identical across environments and reviewable in a PR is a good candidate.
 
 ---
 

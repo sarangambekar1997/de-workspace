@@ -1,5 +1,5 @@
 # Git for Data Engineers
-> Version control workflows tailored to data pipelines, dbt projects, and team collaboration.
+> Version control workflows tailored to data pipelines, SQL transformation projects, and team collaboration.
 
 **Prerequisites:** [Linux & Bash](linux-bash.md)
 
@@ -41,7 +41,7 @@ Without Git:                              With Git:
 
 **Advanced**
 - [Git Workflow for Data Teams](#git-workflow-for-data-teams)
-- [Git for dbt Projects](#git-for-dbt-projects)
+- [Git for Data Pipeline Projects](#git-for-data-pipeline-projects)
 - [Git Hooks in Pipelines](#git-hooks-in-pipelines)
 - [Useful Aliases & Tips](#useful-aliases--tips)
 
@@ -136,7 +136,7 @@ fix: handle NULL customer_id in stg_orders join
 refactor: extract clean_phone_number into a macro
 test: add unique and not_null tests to dim_customer
 docs: document bronze-silver-gold naming convention
-chore: update dbt-core to 1.7.0
+chore: bump pyarrow to 17.0.0
 
 # Types: feat, fix, refactor, test, docs, chore, perf, ci
 ```
@@ -308,7 +308,7 @@ build/
 .ipynb_checkpoints/
 *.ipynb_metadata
 
-# dbt
+# SQL transformation tools (e.g. dbt)
 target/               # compiled SQL and run artifacts
 dbt_packages/         # installed packages (like node_modules)
 logs/
@@ -406,78 +406,79 @@ git checkout main && git pull
 
 ---
 
-## Git for dbt Projects
+## Git for Data Pipeline Projects
 
 ### Repo structure
 
+A single repository typically holds every layer of a pipeline, so one pull request can change ingestion, transformation, and orchestration together:
+
 ```
-dbt-project/
-  ├── models/
+data-platform/
+  ├── ingestion/            # extract/load jobs (Python, connectors config)
+  ├── transformations/      # SQL models or Spark jobs, by layer
   │   ├── staging/
   │   ├── intermediate/
   │   └── marts/
-  ├── tests/
-  ├── macros/
-  ├── seeds/
-  ├── snapshots/
-  ├── dbt_project.yml
-  ├── packages.yml
-  └── .gitignore           # include target/, dbt_packages/, logs/
+  ├── orchestration/        # DAG / workflow definitions
+  ├── tests/                # unit tests, data tests, fixtures
+  ├── infra/                # Terraform or other IaC
+  ├── .github/workflows/    # CI/CD
+  ├── pyproject.toml        # pinned dependencies
+  └── .gitignore            # build artifacts, local profiles, data files
 ```
 
-### CI/CD for dbt
+### CI/CD for data pipelines
 
 ```yaml
-# .github/workflows/dbt_ci.yml
-name: dbt CI
+# .github/workflows/ci.yml
+name: Data pipeline CI
 
 on:
   pull_request:
-    paths:
-      - 'models/**'
-      - 'tests/**'
-      - 'macros/**'
-      - 'dbt_project.yml'
+    paths: ['ingestion/**', 'transformations/**', 'orchestration/**', 'tests/**']
 
 jobs:
-  dbt_test:
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install dbt
-        run: pip install dbt-snowflake==1.7.0
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
 
-      - name: dbt debug
-        run: dbt debug
-        env:
-          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
-          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
-
-      # Only run models changed in this PR
-      - name: dbt build (slim CI)
+      - name: Lint Python and SQL
         run: |
-          dbt build \
-            --select state:modified+ \
-            --defer \
-            --state ./prod_artifacts/
+          ruff check .
+          sqlfluff lint transformations/
+
+      - name: Unit tests
+        run: pytest tests/unit
+
+      - name: Validate orchestration definitions
+        run: pytest tests/orchestration      # e.g. every DAG imports without errors
+
+      # Build only what changed, in an isolated CI schema, then run data tests
+      - name: Build and test changed transformations
+        run: ./scripts/build_changed.sh --target ci
         env:
-          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
-          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          WAREHOUSE_USER: ${{ secrets.CI_WAREHOUSE_USER }}
+          WAREHOUSE_PRIVATE_KEY: ${{ secrets.CI_WAREHOUSE_PRIVATE_KEY }}
+```
+
+**Principles:** use a dedicated CI schema or database per pull request · build and test only changed models and their downstream dependents · use a least-privilege CI service account with key-based auth · deploy to production only from `main`.
+
+**Tool example — dbt "slim CI":** dbt compares the pull request with the production manifest and builds only modified models and their children, reading unchanged upstream models from production:
+
+```bash
+dbt build --target ci --select state:modified+ --defer --state ./prod_artifacts/
 ```
 
 ### Dev → prod promotion
 
-```bash
-# Dev workflow
-dbt run --target dev --select my_new_model+
-dbt test --target dev --select my_new_model+
-
-# CI (on PR)
-dbt build --target ci --select state:modified+ --defer --state ./prod_artifacts/
-
-# Prod deploy (on merge to main)
-dbt build --target prod --select state:modified+
+```
+feature branch  →  local/dev schema     (developer runs and tests changes)
+pull request    →  CI schema            (automated build + tests on changed models)
+merge to main   →  production           (deployment job runs the same code with prod config)
 ```
 
 ---
@@ -495,9 +496,9 @@ set -e
 
 echo "Running pre-commit checks..."
 
-# dbt compile check
-if [ -d "models" ]; then
-    dbt compile --quiet || { echo "dbt compile failed"; exit 1; }
+# SQL lint check
+if command -v sqlfluff &> /dev/null; then
+    sqlfluff lint transformations/ || { echo "SQL linting failed"; exit 1; }
 fi
 
 # Python linting
@@ -591,7 +592,7 @@ git checkout -b recovered abc1234 # create branch from that commit
 
 | Pitfall | Symptom | Fix |
 |---------|---------|-----|
-| Committing secrets (`.env`, `profiles.yml`, keys) | Credentials in history — deleting the file later doesn't remove them | Rotate the secret immediately, then purge with `git filter-repo`; add `detect-private-key` / gitleaks to pre-commit |
+| Committing secrets (`.env`, connection profiles, keys) | Credentials in history — deleting the file later doesn't remove them | Rotate the secret immediately, then purge with `git filter-repo`; add `detect-private-key` / gitleaks to pre-commit |
 | Committing data files or `target/` | Repo balloons to GBs; clones take minutes | `.gitignore` data and build artifacts; use `check-added-large-files` |
 | `git push --force` on a shared branch | Teammates' commits disappear | Use `--force-with-lease`, and only on your own feature branch |
 | Rebasing a branch others have pulled | Duplicate commits and confusing conflicts for everyone | Only rebase local/private branches; merge shared ones |
@@ -641,11 +642,11 @@ A: `fetch` downloads new commits from the remote and updates remote-tracking bra
 **Q: A teammate accidentally committed an AWS key and pushed it. What do you do?**
 A: First, rotate/revoke the key immediately — assume it's compromised the moment it's pushed, because the history is already cloned and possibly scraped. Then remove it from history with `git filter-repo` (or BFG) and force-push, and ask everyone to re-clone. Finally, prevent a repeat: add the file pattern to `.gitignore` and a secret scanner (gitleaks, `detect-private-key`) to pre-commit and CI.
 
-**Q: How would you set up CI/CD for a dbt project with Git?**
-A: Feature branches with PRs into `main`. On every PR, CI runs `dbt build --select state:modified+ --defer --state <prod manifest>` — this builds and tests only changed models and their children, deferring unchanged upstream refs to production. That keeps CI fast and cheap. Merging to `main` triggers the production deploy. Add linting (SQLFluff) and pre-commit hooks so style issues never reach review.
+**Q: How would you set up CI/CD for a SQL transformation project with Git?**
+A: Feature branches with pull requests into `main`. On every pull request, CI lints SQL and Python, runs unit tests, and builds only the changed models and their downstream dependents into an isolated CI schema, then runs data tests against them — reading unchanged upstream tables from production to keep runs fast and cheap (dbt calls this "slim CI" with `state:modified+ --defer`). Merging to `main` triggers the production deployment. Pre-commit hooks catch style and secret issues before review.
 
 **Q: What is trunk-based development and why do data teams like it?**
-A: Everyone works on short-lived branches (hours to a day or two) that merge into a single `main` that's always deployable. It avoids the painful merges of long-lived `develop`/`release` branches. For data teams it pairs well with slim CI and environment-based deploys: small changes are easy to review, easy to test against production data, and easy to revert.
+A: Everyone works on short-lived branches (hours to a day or two) that merge into a single `main` that's always deployable. It avoids the painful merges of long-lived `develop`/`release` branches. For data teams it pairs well with incremental CI builds and environment-based deploys: small changes are easy to review, easy to test against production data, and easy to revert.
 
 ---
 
@@ -654,7 +655,8 @@ A: Everyone works on short-lived branches (hours to a day or two) that merge int
 - [Pro Git book](https://git-scm.com/book/en/v2) — free, the definitive reference
 - [Conventional Commits](https://www.conventionalcommits.org/)
 - [pre-commit](https://pre-commit.com/) — hook framework used above
-- [dbt: Defer](https://docs.getdbt.com/reference/node-selection/defer) — how `--defer` / `--state` power slim CI
+- [SQLFluff](https://docs.sqlfluff.com/) — SQL linter for CI and pre-commit
+- [dbt: Defer](https://docs.getdbt.com/reference/node-selection/defer) — one tool's implementation of CI that builds only changed models
 - [git-filter-repo](https://github.com/newren/git-filter-repo) — removing files/secrets from history
 
 ---
