@@ -45,6 +45,12 @@ Traditional API monitoring:     AI observability adds:
 - [Drift Detection](#drift-detection)
 - [Production Alert Patterns](#production-alert-patterns)
 
+**Reference**
+- [Common Pitfalls](#common-pitfalls)
+- [Cheat Sheet](#cheat-sheet)
+- [Interview Questions](#interview-questions)
+- [Further Reading](#further-reading)
+
 ---
 
 ## What to Monitor
@@ -111,10 +117,13 @@ class LLMCallLog:
     prompt_preview: str           # first 200 chars of prompt
     output_preview: str           # first 200 chars of output
 
+# USD per 1M tokens, as of September 2026 — prices change, so load this from config
+# and check https://www.anthropic.com/pricing and https://openai.com/api/pricing
 COST_PER_1M = {
-    "claude-haiku-4-5-20251001": {"input": 0.80,  "output": 4.00},
-    "claude-sonnet-5":           {"input": 3.00,  "output": 15.00},
-    "claude-opus-5-5":           {"input": 15.00, "output": 75.00},
+    "claude-haiku-4-5-20251001": {"input": 1.00,  "output": 5.00},
+    "claude-haiku-4-5":          {"input": 1.00,  "output": 5.00},
+    "claude-sonnet-5":           {"input": 2.00,  "output": 10.00},
+    "claude-opus-5":             {"input": 5.00,  "output": 25.00},
     "gpt-4o-mini":               {"input": 0.15,  "output": 0.60},
     "gpt-4o":                    {"input": 2.50,  "output": 10.00},
 }
@@ -288,8 +297,10 @@ def on_user_feedback(run_id: str, score: int, comment: str = ""):
 
 Open-source LLM observability — self-hostable alternative to LangSmith.
 
+> **SDK version note:** the examples in this guide use the Langfuse Python SDK **v2** (`langfuse.decorators`, `langfuse.trace()`). SDK v3 (2025) is built on OpenTelemetry and changes the entry points — e.g. `from langfuse import observe, get_client` and `langfuse.start_as_current_span(...)`. Pin the version you use and follow the matching docs.
+
 ```bash
-pip install langfuse
+pip install "langfuse<3"      # the v2 API used below
 # Self-host: docker compose up (see langfuse.com/docs/deployment/self-host)
 ```
 
@@ -423,40 +434,47 @@ def traced_llm_call(prompt: str, model: str = "claude-haiku-4-5-20251001") -> st
 Trace each stage of the RAG pipeline to identify where quality degrades.
 
 ```python
-from langfuse.decorators import observe, langfuse_context
+from langfuse.decorators import observe, langfuse_context   # Langfuse SDK v2
+
+# Each decorated function becomes a nested span inside the calling function's trace
+@observe(name="query-analysis")
+def analyze(question: str) -> str:
+    return classify_query(question)          # factual / conversational / analytical
+
+@observe(name="retrieval")
+def retrieve_traced(question: str) -> list[dict]:
+    chunks = retrieve(question, k=5)
+    langfuse_context.update_current_observation(
+        output={
+            "chunks_retrieved": len(chunks),
+            "top_score": chunks[0]["score"] if chunks else 0,
+            "avg_score": sum(c["score"] for c in chunks) / max(len(chunks), 1),
+        }
+    )
+    return chunks
+
+@observe(name="reranking")
+def rerank_traced(question: str, chunks: list[dict]) -> list[dict]:
+    return rerank(question, chunks, top_n=3)
+
+@observe(name="generation")
+def generate_traced(question: str, chunks: list[dict]) -> str:
+    return generate(question, chunks)
 
 @observe(name="rag-full-pipeline")
 def rag_pipeline(question: str, user_id: str) -> dict:
     langfuse_context.update_current_trace(user_id=user_id)
 
-    # Stage 1: Query analysis
-    with_span("query-analysis"):
-        query_type = classify_query(question)  # factual / conversational / analytical
+    query_type = analyze(question)
+    chunks     = retrieve_traced(question)
+    reranked   = rerank_traced(question, chunks)
+    answer     = generate_traced(question, reranked)
 
-    # Stage 2: Retrieval
-    with_span("retrieval"):
-        chunks = retrieve(question, k=5)
-        langfuse_context.update_current_observation(
-            output={
-                "chunks_retrieved": len(chunks),
-                "top_score": chunks[0]["score"] if chunks else 0,
-                "avg_score": sum(c["score"] for c in chunks) / max(len(chunks), 1),
-            }
-        )
-
-    # Stage 3: Reranking
-    with_span("reranking"):
-        reranked = rerank(question, chunks, top_n=3)
-
-    # Stage 4: Generation
-    with_span("generation"):
-        answer = generate(question, reranked)
-
-    # Stage 5: Quality check
+    # Quality check, attached to the trace as a score
     faithfulness = judge_faithfulness(question,
                                       "\n".join(c["text"] for c in reranked),
                                       answer)
-    langfuse_context.score_current_trace("faithfulness", faithfulness.score)
+    langfuse_context.score_current_trace(name="faithfulness", value=faithfulness.score)
 
     return {"answer": answer, "sources": [c["source"] for c in reranked]}
 ```
@@ -572,6 +590,53 @@ def send_alert(alert: dict, webhook_url: str):
 
 ---
 
+## Common Pitfalls
+
+| Pitfall | Symptom | Fix |
+|---------|---------|-----|
+| Logging only errors | Quality problems are invisible; "no errors" while answers get worse | Trace every call (inputs, outputs, tokens, latency) and sample outputs for quality scoring |
+| No cost attribution | A surprise bill with no idea which feature or customer caused it | Tag every call with feature, user/tenant, prompt version, and model; aggregate cost by tag |
+| Hardcoded price tables | Cost dashboards drift from the invoice | Keep prices in config with a date; reconcile against the provider's usage and cost reports |
+| Averages only | p99 latency spikes and timeouts hidden by a healthy mean | Track p50/p95/p99 latency, time-to-first-token for streaming, and error rate by type |
+| Logging full prompts with PII | Sensitive data copied into a third-party tool | Redact or hash PII before logging; set retention limits; self-host if required |
+| Traces with no link to user feedback | Can't find the answers users disliked | Attach feedback and eval scores to trace IDs |
+| Tracing that blocks the request path | Added latency or failures when the tracing backend is down | Asynchronous, batched exporters; tracing failures must never fail the request |
+| No alerting on quality | A prompt or model change silently degrades answers | Scheduled evals on sampled production traffic with thresholds and alerts |
+| Ignoring `stop_reason` and refusals | Truncated or refused outputs look like normal successes | Record `stop_reason`; alert on spikes in `max_tokens` or `refusal` |
+
+---
+
+## Cheat Sheet
+
+**What to record per LLM call**
+
+| Field | Why |
+|-------|-----|
+| `trace_id`, `span_id`, parent | Reconstruct multi-step chains and agent runs |
+| `model`, prompt version, parameters | Explain behavior changes; compare versions |
+| `input_tokens`, `output_tokens`, cache read/write tokens | Cost and caching efficiency |
+| Latency, time to first token | User experience and SLAs |
+| `stop_reason`, error type, retries | Reliability |
+| Feature, user/tenant, environment | Cost attribution and debugging |
+| Request ID from the provider | Support tickets with the provider |
+| Feedback and eval scores | Quality over time |
+
+**Dashboards and alerts**
+
+| Metric | Alert when |
+|--------|------------|
+| Error rate (4xx / 5xx / timeouts) | Above baseline for 5–10 minutes |
+| p95 latency | Above the SLA |
+| Cost per day / per feature | Above budget or a sudden jump (e.g. 2× the 7-day average) |
+| Tokens per request | Sudden increase (prompt bloat, runaway agents) |
+| Cache hit rate | Drops (a silent cache invalidation) |
+| Quality score on sampled traffic | Below threshold or a significant drop from baseline |
+| `refusal` / `max_tokens` stop rate | Spike |
+
+**Tools:** LangSmith (LangChain ecosystem) · Langfuse (open source, self-hostable) · Arize Phoenix (open source, OpenTelemetry) · MLflow Tracing · Datadog / Grafana with the OpenTelemetry GenAI semantic conventions · your own warehouse table of call logs
+
+---
+
 ## Interview Questions
 
 **Q: What metrics would you monitor for an LLM-powered data assistant in production?**
@@ -579,6 +644,17 @@ A: Four categories: (1) Infrastructure — latency (P50/P95/P99), error rate, th
 
 **Q: How do you detect when an LLM pipeline degrades without users reporting it?**
 A: (1) Run automated quality evals on a sample of real traffic using LLM-as-judge — score faithfulness and relevance; (2) track score distributions over time and alert on statistically significant drops (KS test); (3) monitor cost-per-call — unexpected increases often mean prompt bloat; (4) log all inputs/outputs and do random manual spot-checks; (5) track thumbs-up/down or implicit signals (follow-up questions often indicate a bad answer).
+
+---
+
+## Further Reading
+
+- [OpenTelemetry semantic conventions for GenAI](https://opentelemetry.io/docs/specs/semconv/gen-ai/)
+- [Langfuse documentation](https://langfuse.com/docs)
+- [LangSmith documentation](https://docs.smith.langchain.com/)
+- [Arize Phoenix](https://docs.arize.com/phoenix)
+- [MLflow Tracing](https://mlflow.org/docs/latest/genai/tracing/)
+- [Anthropic Usage and Cost API](https://docs.claude.com/en/api/usage-cost-api) — reconcile your own cost tracking with billing data
 
 ---
 

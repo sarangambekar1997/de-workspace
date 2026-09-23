@@ -66,6 +66,11 @@ Use both when:
 - [Production Considerations](#production-considerations)
 - [Common Mistakes](#common-mistakes)
 
+**Reference**
+- [Cheat Sheet](#cheat-sheet)
+- [Interview Questions](#interview-questions)
+- [Further Reading](#further-reading)
+
 ---
 
 ## Core Concepts
@@ -240,7 +245,7 @@ job = client.fine_tuning.jobs.create(
         "batch_size":      "auto",
         "learning_rate_multiplier": "auto"
     },
-    suffix = "sql-generator"   # model name: gpt-4o-mini-...:ft-sql-generator
+    suffix = "sql-generator"   # appears in the model name: ft:gpt-4o-mini-...:my-org:sql-generator:<id>
 )
 print(f"Job ID: {job.id}, status: {job.status}")
 
@@ -256,7 +261,7 @@ while True:
     time.sleep(60)
 
 print(f"Fine-tuned model: {job.fine_tuned_model}")
-# gpt-4o-mini-2024-07-18:ft-myorg-sql-generator-abc123
+# ft:gpt-4o-mini-2024-07-18:my-org:sql-generator:abc123
 
 # ── 4. Use the fine-tuned model ────────────────────────────────────────────────
 response = client.chat.completions.create(
@@ -283,7 +288,7 @@ pip install transformers datasets peft accelerate bitsandbytes trl
 from datasets import Dataset
 from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments
 from peft import LoraConfig, get_peft_model
-from trl import SFTTrainer
+from trl import SFTConfig, SFTTrainer
 import torch
 
 MODEL_NAME = "meta-llama/Meta-Llama-3-8B-Instruct"
@@ -332,9 +337,11 @@ raw_data = [
     # ... more examples
 ]
 dataset = Dataset.from_list(raw_data).map(format_prompt)
+splits  = dataset.train_test_split(test_size=0.1, seed=42)   # hold out data for eval
 
 # ── 4. Train ───────────────────────────────────────────────────────────────────
-training_args = TrainingArguments(
+# SFTConfig extends TrainingArguments with SFT-specific options (TRL 0.12+)
+training_args = SFTConfig(
     output_dir          = "./fine-tuned-model",
     num_train_epochs    = 3,
     per_device_train_batch_size = 4,
@@ -344,16 +351,18 @@ training_args = TrainingArguments(
     fp16                = True,
     logging_steps       = 10,
     save_steps          = 100,
-    evaluation_strategy = "steps",
+    eval_strategy       = "steps",   # was evaluation_strategy in older transformers
     eval_steps          = 100,
+    dataset_text_field  = "text",
+    max_length          = 2048,      # was max_seq_length in older TRL releases
 )
 
 trainer = SFTTrainer(
-    model           = model,
-    args            = training_args,
-    train_dataset   = dataset,
-    dataset_text_field = "text",
-    max_seq_length  = 2048,
+    model            = model,
+    args             = training_args,
+    train_dataset    = splits["train"],
+    eval_dataset     = splits["test"],
+    processing_class = tokenizer,
 )
 
 trainer.train()
@@ -504,7 +513,7 @@ def mine_from_logs(log_file: str) -> list[dict]:
 # Serving a fine-tuned model
 # Option 1: OpenAI fine-tuned model — just use the model ID
 response = client.chat.completions.create(
-    model="gpt-4o-mini-2024-07-18:ft-myorg-abc123",
+    model="ft:gpt-4o-mini-2024-07-18:my-org::abc123",   # returned as job.fine_tuned_model
     messages=[...]
 )
 
@@ -518,11 +527,12 @@ response = local_client.chat.completions.create(
     messages=[...]
 )
 
-# Cost comparison at 1M tokens/day:
-# GPT-4o:              ~$10,000/day
-# GPT-4o-mini:         ~$300/day
-# Fine-tuned GPT-4o-mini: ~$450/day (fine-tuning cost amortized)
-# Self-hosted 8B model: ~$50/day (GPU instance)
+# Cost comparison — work it out for your own volume rather than trusting rules of thumb:
+#   API model:    daily_tokens / 1e6 × price_per_million        (input and output priced separately)
+#                 e.g. 1M tokens/day at $2.50–$10 per 1M  ≈  $2.50–$10/day
+#   Fine-tuned:   training cost (one-off) + usually higher per-token inference price
+#   Self-hosted:  GPU instance hours (paid even when idle) + engineering/ops time
+# Self-hosting only wins at high, steady volume or when data can't leave your network.
 ```
 
 ---
@@ -561,6 +571,37 @@ response = local_client.chat.completions.create(
 
 ---
 
+## Cheat Sheet
+
+**Should you fine-tune? Try these first, in order**
+
+| Step | Fixes | Cost |
+|------|-------|------|
+| 1. Better prompt + few-shot examples | Format, tone, simple domain rules | Minutes |
+| 2. Structured outputs / tool schemas | Format reliability | Minutes |
+| 3. RAG | Missing or changing knowledge | Days |
+| 4. A stronger model or higher effort | Reasoning quality | A config change |
+| 5. Fine-tuning | Consistent style/format at scale, a narrow task on a small cheap model, lower latency | Weeks: data, training, evals, hosting |
+
+| Approach | What changes | Memory needed (7–8B model) | When |
+|----------|--------------|----------------------------|------|
+| Full fine-tune | All weights | Very high (multiple large GPUs) | Large budgets; big domain shift |
+| LoRA | Small adapter matrices | Moderate (one 24–48 GB GPU) | Default for open models |
+| QLoRA | LoRA on a 4-bit quantized base | Low (one 16–24 GB GPU) | Limited hardware |
+| Hosted API fine-tuning | Provider-managed | None | Fastest path on supported models |
+
+**LoRA knobs:** `r` 8–64 (adapter capacity) · `lora_alpha` ≈ 2×r · `lora_dropout` 0.05–0.1 · `target_modules` attention projections (`q_proj`, `v_proj`, ...) · learning rate ~1e-4 to 2e-4 · 1–3 epochs
+
+**Training data checklist:** hundreds to a few thousand high-quality examples · the same prompt format you'll use at inference · deduplicated · no test examples leaked into training · a held-out eval split · PII removed · edge cases and refusals included
+
+**Chat-format JSONL record**
+
+```json
+{"messages": [{"role": "system", "content": "You write Snowflake SQL."}, {"role": "user", "content": "Count orders by status"}, {"role": "assistant", "content": "SELECT status, COUNT(*) FROM orders GROUP BY status;"}]}
+```
+
+---
+
 ## Interview Questions
 
 **Q: What's the difference between fine-tuning and prompt engineering?**
@@ -571,6 +612,17 @@ A: LoRA (Low-Rank Adaptation) freezes the pre-trained model weights and trains t
 
 **Q: When would you choose fine-tuning over RAG?**
 A: RAG is better for knowledge (facts that change, need citations). Fine-tuning is better for behavior (consistent format, style, custom classifications, domain-specific extraction). Often the right answer is both: fine-tune the model for behavior, add RAG for knowledge grounding.
+
+---
+
+## Further Reading
+
+- [Hugging Face TRL — SFTTrainer](https://huggingface.co/docs/trl/sft_trainer)
+- [Hugging Face PEFT](https://huggingface.co/docs/peft/index) — LoRA and other adapter methods
+- [OpenAI fine-tuning guide](https://platform.openai.com/docs/guides/fine-tuning)
+- [Unsloth](https://docs.unsloth.ai/) — faster, lower-memory LoRA/QLoRA fine-tuning
+- *LoRA: Low-Rank Adaptation of Large Language Models* — Hu et al., 2021 · *QLoRA* — Dettmers et al., 2023
+- [Eval & Evals](eval-and-evals.md) — measure the fine-tuned model against your baseline before shipping
 
 ---
 
