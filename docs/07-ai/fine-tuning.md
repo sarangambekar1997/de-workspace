@@ -474,7 +474,7 @@ Requirements:
 - No explanations in outputs — output only
 """}]
     )
-    return json.loads(response.content[0].text)
+    return json.loads(next(b.text for b in response.content if b.type == "text"))
 
 # Pattern 2: Mine from existing system logs
 def mine_from_logs(log_file: str) -> list[dict]:

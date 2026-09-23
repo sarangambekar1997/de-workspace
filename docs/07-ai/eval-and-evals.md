@@ -81,7 +81,7 @@ def ask(question: str, system: str = "") -> str:
         system=system,
         messages=[{"role": "user", "content": question}]
     )
-    return resp.content[0].text.strip()
+    return next(b.text for b in resp.content if b.type == "text").strip()
 
 # ── Exact / contains checks ────────────────────────────────────────────────────
 class TestClassifier:
@@ -142,6 +142,8 @@ from dataclasses import dataclass
 
 client = anthropic.Anthropic()
 JUDGE_MODEL = "claude-sonnet-5"  # use a capable model as judge
+# Note: Sonnet 5 / Opus 5 reject temperature/top_p (400). For consistent judging, rely on a
+# fixed rubric + structured JSON output; sampling params still work on claude-haiku-4-5.
 
 @dataclass
 class EvalResult:
@@ -173,11 +175,10 @@ Respond with JSON:
     response = client.messages.create(
         model=JUDGE_MODEL,
         max_tokens=256,
-        temperature=0,
         messages=[{"role": "user", "content": prompt}]
     )
     import json
-    data = json.loads(response.content[0].text)
+    data = json.loads(next(b.text for b in response.content if b.type == "text"))
     return EvalResult(
         score=data["score"],
         reasoning=data["reasoning"],
@@ -195,11 +196,10 @@ Respond with JSON: {{"score": <float>, "reasoning": "<one sentence>"}}"""
     response = client.messages.create(
         model=JUDGE_MODEL,
         max_tokens=128,
-        temperature=0,
         messages=[{"role": "user", "content": prompt}]
     )
     import json
-    data = json.loads(response.content[0].text)
+    data = json.loads(next(b.text for b in response.content if b.type == "text"))
     return EvalResult(score=data["score"], reasoning=data["reasoning"], passed=data["score"] >= 0.7)
 
 def judge_completeness(question: str, answer: str, expected_points: list[str]) -> EvalResult:
@@ -218,11 +218,10 @@ Respond with JSON: {{"score": <float>, "covered": [true/false, ...], "reasoning"
     response = client.messages.create(
         model=JUDGE_MODEL,
         max_tokens=256,
-        temperature=0,
         messages=[{"role": "user", "content": prompt}]
     )
     import json
-    data = json.loads(response.content[0].text)
+    data = json.loads(next(b.text for b in response.content if b.type == "text"))
     return EvalResult(score=data["score"], reasoning=data["reasoning"], passed=data["score"] >= 0.7)
 
 # Run evals
@@ -270,7 +269,7 @@ def evaluate_rag_response(question: str, answer: str,
         prompt = f"Is this chunk useful for answering '{question}'?\n\n{chunk}\n\nAnswer YES or NO."
         resp = client.messages.create(model="claude-haiku-4-5-20251001", max_tokens=8,
                                       temperature=0, messages=[{"role": "user", "content": prompt}])
-        if "YES" in resp.content[0].text.upper():
+        if "YES" in next(b.text for b in resp.content if b.type == "text").upper():
             useful += 1
     results["context_precision"] = useful / len(retrieved_chunks) if retrieved_chunks else 0
 
@@ -339,7 +338,7 @@ Documents:
 """}]
     )
     import json
-    return json.loads(response.content[0].text)
+    return json.loads(next(b.text for b in response.content if b.type == "text"))
 ```
 
 ---

@@ -404,7 +404,7 @@ class RAGModel(mlflow.pyfunc.PythonModel):
                 max_tokens=512,
                 messages=[{"role": "user", "content": f"Context: {context_text}\n\nQ: {question}"}]
             )
-            answers.append(resp.content[0].text)
+            answers.append(next(b.text for b in resp.content if b.type == "text"))
         return pd.Series(answers)
 
 # Log and register

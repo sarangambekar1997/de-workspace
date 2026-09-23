@@ -173,7 +173,7 @@ Be concise. Cite the context number like [1] when you use it.""",
             "content": f"Context:\n{context}\n\nQuestion: {question}"
         }]
     )
-    return response.content[0].text
+    return next(b.text for b in response.content if b.type == "text")
 
 # ── 5. Ask ────────────────────────────────────────────────────────────────────
 print(answer("What columns does the orders table have?"))
@@ -330,7 +330,7 @@ def compress_chunk(query: str, chunk: str) -> str:
             "content": f"Extract only the parts of this text relevant to the question.\n\nQuestion: {query}\n\nText: {chunk}\n\nRelevant excerpt:"
         }]
     )
-    return response.content[0].text
+    return next(b.text for b in response.content if b.type == "text")
 
 # Parent-child chunking
 # Index small chunks (for precision), but retrieve larger parent chunks (for context)
@@ -375,7 +375,7 @@ Rules:
     )
 
     return {
-        "answer":  response.content[0].text,
+        "answer":  next(b.text for b in response.content if b.type == "text"),
         "sources": [c.get("doc_id") for c in context_chunks],
         "tokens":  response.usage.input_tokens + response.usage.output_tokens,
     }
@@ -458,7 +458,7 @@ def hyde_retrieve(query: str, k: int = 5) -> list[dict]:
         max_tokens=200,
         messages=[{"role": "user", "content": f"Write a short paragraph that would be a good answer to: {query}"}]
     )
-    hypothetical = response.content[0].text
+    hypothetical = next(b.text for b in response.content if b.type == "text")
 
     # Step 2: embed the hypothetical answer (not the query)
     hyp_vec = embed([hypothetical])[0]
@@ -483,7 +483,7 @@ def multi_query_retrieve(question: str, k: int = 5) -> list[dict]:
         }]
     )
     import json
-    queries = json.loads(response.content[0].text)
+    queries = json.loads(next(b.text for b in response.content if b.type == "text"))
     queries.append(question)  # include original
 
     # Retrieve for each query, deduplicate
@@ -526,7 +526,7 @@ CONTEXT:
         system=system,
         messages=messages
     )
-    return response.content[0].text
+    return next(b.text for b in response.content if b.type == "text")
 ```
 
 ---
@@ -555,7 +555,7 @@ Score (just the number):"""
         }]
     )
     try:
-        return float(response.content[0].text.strip())
+        return float(next(b.text for b in response.content if b.type == "text").strip())
     except ValueError:
         return 0.0
 
@@ -571,7 +571,7 @@ def eval_relevance(question: str, answer: str) -> float:
         }]
     )
     try:
-        return float(response.content[0].text.strip())
+        return float(next(b.text for b in response.content if b.type == "text").strip())
     except ValueError:
         return 0.0
 
@@ -585,7 +585,7 @@ def eval_retrieval(question: str, chunks: list[str]) -> float:
             temperature=0,
             messages=[{"role": "user", "content": f"Is this chunk relevant to '{question}'? Answer YES or NO.\n\n{chunk}"}]
         )
-        if "YES" in resp.content[0].text.upper():
+        if "YES" in next(b.text for b in resp.content if b.type == "text").upper():
             relevant += 1
     return relevant / len(chunks)
 

@@ -175,14 +175,14 @@ If there are no issues, say "LGTM" and briefly explain why.
 """
 
 response = client.messages.create(
-    model="claude-sonnet-4-6",
+    model="claude-sonnet-5",
     max_tokens=1024,
     system=system,
     messages=[
         {"role": "user", "content": "Review this model:\n\nSELECT * FROM orders o, customers c WHERE o.customer_id = c.id"}
     ]
 )
-print(response.content[0].text)
+print(next(b.text for b in response.content if b.type == "text"))
 ```
 
 **Good system prompt structure:**
@@ -266,12 +266,12 @@ Return ONLY valid JSON with these fields:
 """
 
 response = client.messages.create(
-    model="claude-sonnet-4-6",
+    model="claude-sonnet-5",
     max_tokens=512,
     messages=[{"role": "user", "content": prompt}]
 )
 
-result = json.loads(response.content[0].text)
+result = json.loads(next(b.text for b in response.content if b.type == "text"))
 print(result)
 # {
 #   "timestamp": "2024-03-15T03:42:11",
@@ -287,21 +287,25 @@ print(result)
 **Tips for reliable JSON:**
 - Say "Return ONLY valid JSON" — no prose before or after
 - Provide the exact schema with field names and types
-- Pre-fill the assistant turn with `{` to force JSON start
-- Use `response_format: {"type": "json_object"}` in OpenAI's API
+- Use structured outputs to *guarantee* schema-valid JSON (Anthropic: `output_config.format` / `client.messages.parse`; OpenAI: `response_format` with a JSON schema)
+- Assistant prefill (starting the reply with `{`) is no longer supported on current Claude models — it returns a 400
 
 ```python
-# Pre-fill technique (Anthropic)
-response = client.messages.create(
-    model="claude-sonnet-4-6",
-    max_tokens=512,
-    messages=[
-        {"role": "user",      "content": "Extract the pipeline name and error type as JSON."},
-        {"role": "assistant", "content": "{"},   # pre-fill forces JSON
-    ]
+# Structured outputs (Anthropic) — the response is validated against the schema
+from pydantic import BaseModel
+
+class PipelineError(BaseModel):
+    pipeline_name: str
+    error_type: str
+
+response = client.messages.parse(
+    model="claude-sonnet-5",
+    max_tokens=1024,
+    messages=[{"role": "user", "content": f"Extract the pipeline name and error type:\n{log_line}"}],
+    output_format=PipelineError,
 )
-# Prepend the { back to the response
-full_json = "{" + response.content[0].text
+error = response.parsed_output      # a validated PipelineError instance
+print(error.pipeline_name, error.error_type)
 ```
 
 ---
@@ -331,12 +335,12 @@ client = anthropic.Anthropic()
 
 def call(system: str, user: str) -> str:
     r = client.messages.create(
-        model="claude-sonnet-4-6",
+        model="claude-sonnet-5",
         max_tokens=1024,
         system=system,
         messages=[{"role": "user", "content": user}]
     )
-    return r.content[0].text
+    return next(b.text for b in r.content if b.type == "text")
 
 # Step 1: Extract intent
 intent = call(
@@ -415,7 +419,7 @@ Rewrite the prompt to fix this issue. Explain what you changed and why.
 
 # Self-improvement loop
 response = client.messages.create(
-    model="claude-sonnet-4-6",
+    model="claude-sonnet-5",
     max_tokens=2048,
     messages=[{
         "role": "user",

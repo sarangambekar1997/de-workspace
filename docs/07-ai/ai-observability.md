@@ -135,7 +135,7 @@ def tracked_call(feature: str, user_id: str = "system", **kwargs) -> str:
     try:
         response = client.messages.create(**kwargs)
         latency  = (time.perf_counter() - start) * 1000
-        output   = response.content[0].text if response.content else ""
+        output   = next(b.text for b in response.content if b.type == "text") if response.content else ""
 
         log = LLMCallLog(
             call_id       = call_id,
@@ -260,7 +260,7 @@ def rag_answer(question: str) -> str:
         max_tokens=512,
         messages=[{"role": "user", "content": f"Context: {context}\nQ: {question}"}]
     )
-    return response.content[0].text
+    return next(b.text for b in response.content if b.type == "text")
 
 # This creates a trace with nested spans for retrieve + generate
 answer = rag_answer("What is the orders table schema?")
@@ -411,7 +411,7 @@ def traced_llm_call(prompt: str, model: str = "claude-haiku-4-5-20251001") -> st
         span.set_attribute("llm.output_tokens", response.usage.output_tokens)
         span.set_attribute("llm.stop_reason",   response.stop_reason)
 
-        output = response.content[0].text
+        output = next(b.text for b in response.content if b.type == "text")
         span.set_attribute("llm.output_length", len(output))
         return output
 ```

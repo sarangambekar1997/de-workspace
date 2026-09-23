@@ -92,7 +92,7 @@ message = client.messages.create(
     ]
 )
 
-print(message.content[0].text)
+print(next(b.text for b in message.content if b.type == "text"))
 ```
 
 ### With a system prompt
@@ -118,7 +118,7 @@ message.usage         # Usage(input_tokens=45, output_tokens=210)
 message.content       # list of content blocks
 
 # Text response
-message.content[0].text
+next(b.text for b in message.content if b.type == "text")
 message.content[0].type  # "text"
 ```
 
@@ -160,8 +160,9 @@ response.usage.total_tokens
 |-----------|-------------|----------------|
 | `model` | Which model to use | see model IDs above |
 | `max_tokens` | Max output tokens | 256–4096 for most tasks |
-| `temperature` | Randomness (0=deterministic, 1=creative) | 0 for data tasks, 0.7 for creative |
-| `top_p` | Nucleus sampling (alternative to temperature) | 0.9–1.0 |
+| `temperature` | Randomness (0=deterministic, 1=creative) | 0 for data tasks, 0.7 for creative — **Haiku 4.5 and older only**; Sonnet 5 / Opus 5+ return a 400 |
+| `top_p` | Nucleus sampling (alternative to temperature) | Same restriction as `temperature` |
+| `output_config` | Effort (`{"effort": "low"…"max"}`) and structured output format | The main control on current Claude models |
 | `stop_sequences` | Stop generation at these strings | `["\n\n", "END"]` |
 | `system` | System prompt (Anthropic) | Instructions, persona, format |
 
@@ -174,12 +175,13 @@ message = client.messages.create(
     messages=[{"role": "user", "content": "Extract the table name from: SELECT * FROM orders"}]
 )
 
-# For creative content generation — want variation
+# For creative content generation on current models — no sampling params (they return a 400);
+# ask for variety in the prompt and tune effort instead
 message = client.messages.create(
     model="claude-sonnet-5",
     max_tokens=1024,
-    temperature=0.8,
-    messages=[{"role": "user", "content": "Write 3 different error message suggestions for a failed pipeline."}]
+    output_config={"effort": "low"},   # low | medium | high | xhigh | max
+    messages=[{"role": "user", "content": "Write 3 clearly different error message suggestions for a failed pipeline."}]
 )
 ```
 
@@ -528,7 +530,7 @@ while True:
 
 # Retrieve results
 for result in client.messages.batches.results(batch.id):
-    print(result.custom_id, result.result.message.content[0].text)
+    print(result.custom_id, next(b.text for b in result.result.message.content if b.type == "text"))
 ```
 
 ---
@@ -596,7 +598,7 @@ async def classify(text: str, idx: int) -> dict:
         temperature=0,
         messages=[{"role": "user", "content": f"Classify as PASS or FAIL: {text}"}]
     )
-    return {"idx": idx, "result": response.content[0].text.strip()}
+    return {"idx": idx, "result": next(b.text for b in response.content if b.type == "text").strip()}
 
 async def classify_all(texts: list[str]) -> list[dict]:
     tasks = [classify(text, i) for i, text in enumerate(texts)]

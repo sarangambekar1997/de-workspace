@@ -151,7 +151,7 @@ for block in response.content:
                                                     "content": json.dumps(result)}]}
             ]
         )
-        print(final.content[0].text)
+        print(next(b.text for b in final.content if b.type == "text"))
         # "We currently have 152,340 orders in the database."
 ```
 
@@ -501,7 +501,7 @@ class AgentWithMemory:
             pass
 
         # Save response to history
-        answer = response.content[0].text
+        answer = next(b.text for b in response.content if b.type == "text")
         self.history.append({"role": "assistant", "content": answer})
         return answer
 
