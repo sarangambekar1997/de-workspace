@@ -7,6 +7,24 @@
 
 ---
 
+## Plain English: What Is SQL and Why Is It Still Everywhere?
+
+**The problem:** Data sits in tables — orders, customers, events — often billions of rows across many machines. You need to ask questions of it ("revenue by region last quarter") without writing a program that loops over every row.
+
+**SQL is the fix:** you *describe the result you want*, and the database figures out how to get it — which indexes to use, which order to join in, how to split the work across a cluster. The same few keywords work in Postgres, Snowflake, BigQuery, Databricks, DuckDB, and Spark.
+
+```
+You write:                                    The engine decides:
+  SELECT region, SUM(amount)                    scan only 2 columns (columnar)
+  FROM   orders                                 skip partitions outside Q3 (pruning)
+  WHERE  order_date >= '2024-07-01'             aggregate in parallel on 32 nodes
+  GROUP  BY region;                             merge partial sums → 5 rows back
+```
+
+**Why it matters for data engineers:** SQL is the language of the warehouse, of dbt, of data quality checks, and of most interviews. If you only get really good at one language for this job, make it SQL — especially joins, `GROUP BY`, and window functions.
+
+---
+
 ## Table of Contents
 - [What is SQL?](#what-is-sql)
 - [Data Types](#data-types)
@@ -22,6 +40,12 @@
 - [Indexes & Performance](#indexes--performance)
 - [Transactions](#transactions--acid)
 - [Views](#views)
+
+**Reference**
+- [Common Pitfalls](#common-pitfalls)
+- [Cheat Sheet](#cheat-sheet)
+- [Interview Questions](#interview-questions)
+- [Further Reading](#further-reading)
 
 ---
 
@@ -633,16 +657,118 @@ REFRESH MATERIALIZED VIEW dept_summary;
 
 ---
 
-## Quick Reference
+## Common Pitfalls
 
-| Concept | Use when |
-|---------|----------|
-| View | Reusable query, always fresh data |
-| Materialized view | Expensive query, acceptable staleness |
-| CTE | One-off readable subquery in a single statement |
-| Index | Speeding up lookups on a column |
-| Transaction | Multiple writes that must succeed or fail together |
-| Window function | Per-row calculation referencing sibling rows |
+| Pitfall | Symptom | Fix |
+|---------|---------|-----|
+| `= NULL` / `!= NULL` | Filter returns nothing | `IS NULL` / `IS NOT NULL`; remember `NULL` compared with anything is unknown |
+| `NOT IN (subquery)` where the subquery returns a `NULL` | Query returns zero rows | Use `NOT EXISTS`, or filter `NULL`s out of the subquery |
+| Join fan-out (joining to a table with multiple matches per key) | `SUM(amount)` is inflated 2×, 3×… | Check key uniqueness first; aggregate before joining; compare `COUNT(*)` before/after |
+| Filtering the right table of a `LEFT JOIN` in `WHERE` | Left join silently becomes an inner join | Put the condition in the `ON` clause |
+| `COUNT(col)` vs `COUNT(*)` confusion | Counts differ unexpectedly | `COUNT(col)` skips `NULL`s; `COUNT(*)` counts rows |
+| Integer division (`1 / 2 = 0` in Postgres) | Percentages come out as 0 | Cast: `1.0 * a / b` or `a::numeric / b`; guard with `NULLIF(b, 0)` |
+| `ROW_NUMBER()` without a unique `ORDER BY` | Dedup keeps a different row each run | Add a tiebreaker column so ordering is deterministic |
+| Functions on indexed/partitioned columns in `WHERE` (`DATE(ts) = ...`) | Index or partition pruning not used; full scan | Use a range on the raw column: `ts >= '2024-03-15' AND ts < '2024-03-16'` |
+| `SELECT *` in production queries | Breaks when columns are added; scans everything in columnar stores | Name the columns you need |
+| `BETWEEN` on timestamps | Includes midnight of the end date, or misses the rest of that day | Half-open ranges: `>= start AND < end` |
+| `UNION` when you meant `UNION ALL` | Unnecessary sort/dedup; rows silently disappear | `UNION ALL` unless you need deduplication |
+
+---
+
+## Cheat Sheet
+
+**Which construct?**
+
+| Need | Use |
+|------|-----|
+| Reusable query, always fresh data | View |
+| Expensive query, staleness OK | Materialized view |
+| Readable multi-step logic in one statement | CTE (`WITH ...`) |
+| Per-row value that looks at other rows | Window function |
+| Filter on an aggregate | `HAVING` |
+| "Rows in A with no match in B" | `LEFT JOIN ... WHERE b.id IS NULL` or `NOT EXISTS` |
+| Several writes that succeed or fail together | Transaction |
+| Speed up lookups on a column (OLTP) | Index |
+| Insert-or-update | `MERGE` / `INSERT ... ON CONFLICT` |
+
+**Syntax you'll write every day**
+
+```sql
+-- Dedupe: keep latest row per key
+SELECT * FROM (
+  SELECT *, ROW_NUMBER() OVER (PARTITION BY id ORDER BY updated_at DESC) AS rn
+  FROM   raw_orders
+) t WHERE rn = 1;                                 -- Snowflake/BigQuery/Databricks: QUALIFY rn = 1
+
+-- Top N per group
+... RANK() OVER (PARTITION BY dept ORDER BY salary DESC) <= 3
+
+-- Running total / 7-row moving average
+SUM(amount) OVER (ORDER BY day ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+AVG(amount) OVER (ORDER BY day ROWS BETWEEN 6 PRECEDING AND CURRENT ROW)
+
+-- Change vs previous row
+amount - LAG(amount) OVER (PARTITION BY customer_id ORDER BY order_date)
+
+-- Conditional aggregation (pivot)
+SUM(CASE WHEN status = 'shipped' THEN 1 ELSE 0 END) AS shipped_count
+
+-- Safe division
+revenue / NULLIF(orders, 0)
+
+-- Find duplicates
+SELECT id, COUNT(*) FROM t GROUP BY id HAVING COUNT(*) > 1;
+
+-- Upsert (Postgres)
+INSERT INTO t (id, v) VALUES (1, 'x')
+ON CONFLICT (id) DO UPDATE SET v = EXCLUDED.v;
+```
+
+**Execution order:** `FROM → JOIN → WHERE → GROUP BY → HAVING → SELECT → (window functions) → ORDER BY → LIMIT`
+
+**Ranking:** `ROW_NUMBER` 1,2,3,4 · `RANK` 1,2,2,4 · `DENSE_RANK` 1,2,2,3
+
+---
+
+## Interview Questions
+
+**Q: What is the difference between `WHERE` and `HAVING`?**
+A: `WHERE` filters individual rows *before* grouping, so it can't reference aggregates. `HAVING` filters groups *after* `GROUP BY`, so it can: `HAVING COUNT(*) > 5`. Put every condition you can in `WHERE` — filtering rows before aggregation is cheaper.
+
+**Q: Explain the different join types.**
+A: `INNER JOIN` returns only rows with a match on both sides. `LEFT JOIN` returns every row from the left table, with `NULL`s where the right has no match. `RIGHT JOIN` is the mirror image. `FULL OUTER JOIN` returns everything from both, matched where possible. `CROSS JOIN` returns every combination (a Cartesian product). Watch for fan-out: if the join key isn't unique on one side, rows multiply.
+
+**Q: What's the difference between `ROW_NUMBER`, `RANK`, and `DENSE_RANK`?**
+A: All three number rows within a window ordering. On ties, `ROW_NUMBER` still assigns unique numbers (1, 2, 3, 4) — arbitrarily unless the ordering is unique. `RANK` gives ties the same number and then skips (1, 2, 2, 4). `DENSE_RANK` gives ties the same number without gaps (1, 2, 2, 3). Use `ROW_NUMBER` for deduplication and `DENSE_RANK` for "top N distinct values".
+
+**Q: How would you find the second-highest salary in each department?**
+A: `DENSE_RANK() OVER (PARTITION BY department ORDER BY salary DESC)` in a CTE or subquery, then filter where the rank equals 2. `DENSE_RANK` means that if two people tie for the top salary, the next distinct salary is still ranked 2.
+
+**Q: How do you remove duplicate rows but keep the latest version of each record?**
+A: `ROW_NUMBER() OVER (PARTITION BY <business key> ORDER BY updated_at DESC, <tiebreaker>)` and keep `rn = 1` (`QUALIFY` does this without a subquery in Snowflake/BigQuery/Databricks). The tiebreaker matters: without a deterministic order, reruns can pick different rows.
+
+**Q: What is the difference between a CTE and a subquery? Is a CTE faster?**
+A: Both define an intermediate result; a CTE names it up front with `WITH`, which makes multi-step logic readable and lets you reference the result more than once. Performance is usually identical, because most modern optimizers inline CTEs. Some engines may materialize a CTE that's referenced multiple times, which can help or hurt. Choose CTEs for readability, and check `EXPLAIN` if performance matters.
+
+**Q: What does `NULL` do in comparisons, joins, and aggregates?**
+A: `NULL` means "unknown", so `NULL = NULL` is not true — it's unknown, and rows with unknown conditions are filtered out. Joins on `NULL` keys never match. `COUNT(col)`, `SUM`, and `AVG` ignore `NULL`s, while `COUNT(*)` counts all rows. Use `IS NULL`, `COALESCE`, and `IS NOT DISTINCT FROM` (NULL-safe equality) to handle them explicitly.
+
+**Q: A query that was fast last month is now slow. How do you debug it?**
+A: Run `EXPLAIN ANALYZE` (or check the warehouse query profile) and compare estimated vs actual rows. Common causes: data growth pushing a join into a spill; stale statistics causing a bad plan; a new function on a filtered column preventing index use or partition pruning; join fan-out from new duplicate keys; or, in a warehouse, a too-small warehouse or clustering that has degraded. Fix the cause — add a filter, fix the join key, recluster — rather than just throwing more compute at it.
+
+**Q: What are ACID transactions and isolation levels?**
+A: ACID means atomic (all or nothing), consistent (constraints hold), isolated (concurrent transactions don't see each other's partial work), and durable (committed data survives crashes). Isolation levels trade correctness for concurrency: `READ COMMITTED` (the Postgres default) prevents dirty reads; `REPEATABLE READ` also prevents a row changing between two reads; `SERIALIZABLE` behaves as if transactions ran one at a time.
+
+---
+
+## Further Reading
+
+- [PostgreSQL documentation — SQL language](https://www.postgresql.org/docs/current/sql.html)
+- [Use The Index, Luke](https://use-the-index-luke.com/) — free, the best explanation of indexes and query performance
+- [Modern SQL](https://modern-sql.com/) — window functions, `FILTER`, `LATERAL` and other features across databases
+- [SQLBolt](https://sqlbolt.com/) — interactive beginner lessons
+- [DataLemur](https://datalemur.com/) and [LeetCode Database](https://leetcode.com/problemset/database/) — interview-style practice problems
+- [DuckDB](https://duckdb.org/docs/) — run SQL locally over CSV/Parquet files with no server; great for practicing
 
 ---
 

@@ -7,6 +7,24 @@
 
 ---
 
+## Plain English: What Is Git and Why Do Data Engineers Need It?
+
+**The problem:** Pipelines are code — SQL models, DAGs, Spark jobs, Terraform. Without version control you get `fct_orders_v2_final_FIXED.sql`, no idea who changed what, and no way back when a change breaks the 6am load.
+
+**Git is the fix:** It records every change as a snapshot with an author and a reason. You work on a *branch* without touching production, get the change reviewed in a *pull request*, and merge it once CI has run your tests. If it still breaks, you can see exactly which commit did it and revert it in one command.
+
+```
+Without Git:                              With Git:
+  edit prod SQL directly                    branch → change → PR → CI tests → review → merge
+  "who changed this join?"                  git blame models/fct_orders.sql
+  "it worked yesterday"                     git log -p / git bisect → the exact commit
+  copy files to back them up                every version is kept, forever
+```
+
+**For data engineers specifically**, Git is what CI/CD hangs off: dbt slim CI, Airflow DAG deploys, and Terraform plans all run on a push or a pull request.
+
+---
+
 ## Table of Contents
 
 **Basics**
@@ -26,6 +44,12 @@
 - [Git for dbt Projects](#git-for-dbt-projects)
 - [Git Hooks in Pipelines](#git-hooks-in-pipelines)
 - [Useful Aliases & Tips](#useful-aliases--tips)
+
+**Reference**
+- [Common Pitfalls](#common-pitfalls)
+- [Cheat Sheet](#cheat-sheet)
+- [Interview Questions](#interview-questions)
+- [Further Reading](#further-reading)
 
 ---
 
@@ -560,6 +584,78 @@ git log --follow --oneline models/fct_orders.sql
 git reflog                        # shows all recent HEAD movements
 git checkout -b recovered abc1234 # create branch from that commit
 ```
+
+---
+
+## Common Pitfalls
+
+| Pitfall | Symptom | Fix |
+|---------|---------|-----|
+| Committing secrets (`.env`, `profiles.yml`, keys) | Credentials in history — deleting the file later doesn't remove them | Rotate the secret immediately, then purge with `git filter-repo`; add `detect-private-key` / gitleaks to pre-commit |
+| Committing data files or `target/` | Repo balloons to GBs; clones take minutes | `.gitignore` data and build artifacts; use `check-added-large-files` |
+| `git push --force` on a shared branch | Teammates' commits disappear | Use `--force-with-lease`, and only on your own feature branch |
+| Rebasing a branch others have pulled | Duplicate commits and confusing conflicts for everyone | Only rebase local/private branches; merge shared ones |
+| Long-lived feature branches | Huge conflict-ridden PRs that nobody reviews properly | Keep branches under a day or two; merge small, often |
+| `git reset --hard` with uncommitted work | Work is gone (it was never committed, so reflog can't help) | `git stash` first; commit WIP early |
+| Vague commit messages ("fix", "wip") | History is useless for finding when/why a model changed | Conventional commits: `fix: handle NULL customer_id in stg_orders` |
+| Editing production directly, then committing | Git and prod drift apart; the next deploy undoes the hotfix | All changes go through Git; deploy from `main` only |
+
+---
+
+## Cheat Sheet
+
+| Task | Command |
+|------|---------|
+| New branch from latest main | `git switch main && git pull && git switch -c feature/DE-123-x` |
+| See what changed | `git status` · `git diff` · `git diff --staged` |
+| Stage part of a file | `git add -p` |
+| Commit | `git commit -m "feat: ..."` |
+| Fix last commit (not pushed) | `git commit --amend --no-edit` |
+| Update branch with main | `git fetch && git rebase origin/main` |
+| Push new branch | `git push -u origin HEAD` |
+| Undo last commit, keep changes | `git reset --soft HEAD~1` |
+| Undo a pushed commit safely | `git revert <sha>` |
+| Discard local edits to a file | `git restore <file>` |
+| Park work in progress | `git stash` / `git stash pop` |
+| Who changed this line | `git blame <file>` |
+| When was this string added/removed | `git log -S "text" --oneline` |
+| Find the commit that broke it | `git bisect start` → `bad` → `good <sha>` |
+| Recover a "lost" commit | `git reflog` → `git switch -c rescue <sha>` |
+| Pretty history | `git log --oneline --graph --all` |
+
+**Merge vs rebase in one line:** rebase your own branch onto `main` to keep history linear; never rebase something others have pulled.
+
+---
+
+## Interview Questions
+
+**Q: What is the difference between `git merge` and `git rebase`?**
+A: Merge combines two branches by creating a merge commit that has both as parents — history is preserved exactly but becomes non-linear. Rebase replays your commits on top of another branch, rewriting them with new hashes, which gives a clean linear history. Because rebase rewrites commits, you should only rebase branches nobody else has pulled; for shared branches, merge. A common team pattern is: rebase your feature branch on `main` before opening a PR, then squash-merge.
+
+**Q: What's the difference between `git reset` and `git revert`?**
+A: `reset` moves the branch pointer backwards, effectively removing commits from the branch (`--soft` keeps changes staged, `--mixed` keeps them unstaged, `--hard` discards them). It rewrites history, so it's for local, unpushed work. `revert` creates a new commit that undoes an earlier one — history stays intact, so it's the safe way to undo something already on a shared branch like `main`.
+
+**Q: What is `git fetch` vs `git pull`?**
+A: `fetch` downloads new commits from the remote and updates remote-tracking branches (`origin/main`) but doesn't touch your working branch. `pull` is `fetch` followed by a merge (or rebase, if configured) into your current branch. Fetching first lets you inspect what changed before integrating it.
+
+**Q: A teammate accidentally committed an AWS key and pushed it. What do you do?**
+A: First, rotate/revoke the key immediately — assume it's compromised the moment it's pushed, because the history is already cloned and possibly scraped. Then remove it from history with `git filter-repo` (or BFG) and force-push, and ask everyone to re-clone. Finally, prevent a repeat: add the file pattern to `.gitignore` and a secret scanner (gitleaks, `detect-private-key`) to pre-commit and CI.
+
+**Q: How would you set up CI/CD for a dbt project with Git?**
+A: Feature branches with PRs into `main`. On every PR, CI runs `dbt build --select state:modified+ --defer --state <prod manifest>` — this builds and tests only changed models and their children, deferring unchanged upstream refs to production. That keeps CI fast and cheap. Merging to `main` triggers the production deploy. Add linting (SQLFluff) and pre-commit hooks so style issues never reach review.
+
+**Q: What is trunk-based development and why do data teams like it?**
+A: Everyone works on short-lived branches (hours to a day or two) that merge into a single `main` that's always deployable. It avoids the painful merges of long-lived `develop`/`release` branches. For data teams it pairs well with slim CI and environment-based deploys: small changes are easy to review, easy to test against production data, and easy to revert.
+
+---
+
+## Further Reading
+
+- [Pro Git book](https://git-scm.com/book/en/v2) — free, the definitive reference
+- [Conventional Commits](https://www.conventionalcommits.org/)
+- [pre-commit](https://pre-commit.com/) — hook framework used above
+- [dbt: Defer](https://docs.getdbt.com/reference/node-selection/defer) — how `--defer` / `--state` power slim CI
+- [git-filter-repo](https://github.com/newren/git-filter-repo) — removing files/secrets from history
 
 ---
 
