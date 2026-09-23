@@ -7,6 +7,25 @@
 
 ---
 
+## Plain English: What Is Claude Code?
+
+**The problem:** Chat assistants can explain code, but you still copy snippets back and forth, paste error messages in, and do the actual editing, running, and testing yourself. They can't see your repository, run `dbt build`, or notice that the test they just broke lives in another file.
+
+**Claude Code is the fix:** an AI coding agent that works *inside* your project — in the terminal, in your IDE, on the desktop, or in the browser. It reads your files, searches the codebase, edits code, runs commands (tests, linters, `dbt compile`, `git`), looks at the results, and iterates until the task is done, asking permission before anything risky.
+
+```
+You: "fct_orders double-counts refunds — fix it and add a test"
+  → reads models/marts/fct_orders.sql and its upstream staging models
+  → finds the join fan-out on stg_refunds
+  → edits the model, adds a uniqueness test in the YAML
+  → runs: dbt build -s fct_orders+   → tests pass
+  → summarizes the change and shows the diff for review
+```
+
+**How you steer it:** a `CLAUDE.md` file in the repo holds project conventions (it's read every session), permission modes and allow-lists decide what it can do without asking, MCP servers connect it to tools like your warehouse or Airflow, and hooks and skills automate your team's workflows.
+
+---
+
 ## Table of Contents
 
 **Basic**
@@ -26,6 +45,12 @@
 - [Custom Slash Commands (Skills)](#custom-slash-commands-skills)
 - [Headless & CI Mode](#headless--ci-mode)
 - [DE-Specific Workflows](#de-specific-workflows)
+
+**Reference**
+- [Common Pitfalls](#common-pitfalls)
+- [Cheat Sheet](#cheat-sheet)
+- [Interview Questions](#interview-questions)
+- [Further Reading](#further-reading)
 
 ---
 
@@ -52,7 +77,10 @@ Claude Code:                 Claude reads your repo, edits files directly,
 ## Installation & Setup
 
 ```bash
-# Install (requires Node.js 18+)
+# Install — native installer (recommended; auto-updates)
+curl -fsSL https://claude.ai/install.sh | bash
+
+# Or via npm (requires Node.js 18+)
 npm install -g @anthropic-ai/claude-code
 
 # Verify
@@ -150,17 +178,21 @@ Claude Code reads files before editing them — it always has full context.
 > The CI is failing on the type check step — fix all mypy errors
 ```
 
-**Permission modes:**
+**Permission modes** (cycle with Shift+Tab, or pass `--permission-mode`):
 
 | Mode | What auto-approves |
 |------|--------------------|
-| **Default** | File reads; prompts for file edits, shell commands |
-| **Auto-approve** | File reads and edits; prompts for shell commands |
-| `--dangerously-skip-permissions` | Everything (use only in trusted CI environments) |
+| `default` | File reads; prompts for edits and shell commands |
+| `acceptEdits` | File reads and edits; prompts for shell commands |
+| `plan` | Nothing is changed — Claude researches and proposes a plan first |
+| `bypassPermissions` (`--dangerously-skip-permissions`) | Everything — only in isolated sandboxes/containers |
 
 ```bash
-# Run with auto-approve for edits (still prompts for destructive shell commands)
-claude --approve-tools "Edit,Write,Read"
+# Auto-accept file edits for this session
+claude --permission-mode acceptEdits
+
+# Pre-approve specific tools (and deny others) — also configurable in .claude/settings.json
+claude --allowedTools "Read,Grep,Glob,Edit,Bash(dbt compile:*)" --disallowedTools "Bash(rm:*)"
 ```
 
 ---
@@ -181,11 +213,11 @@ Claude Code persists memory across sessions in `~/.claude/projects/<project>/mem
 # Claude will save these as memory files and load them in future sessions
 ```
 
-**Memory types:**
-- `user/` — your role, preferences, expertise
-- `feedback/` — corrections and confirmed approaches
-- `project/` — current project context, decisions, deadlines
-- `reference/` — where to find external information
+**Memory types** (set in each memory file's frontmatter, with an index in `MEMORY.md`):
+- `user` — your role, preferences, expertise
+- `feedback` — corrections and confirmed approaches
+- `project` — current project context, decisions, deadlines
+- `reference` — where to find external information
 
 ---
 
@@ -238,14 +270,21 @@ The data stack: Snowflake + dbt + Airflow on EKS + Databricks for Spark jobs.
 MCP (Model Context Protocol) extends Claude Code with external tools — databases, APIs, services.
 
 ```bash
-# Add an MCP server (globally)
-claude mcp add my-server npx -y @my-org/my-mcp-server
+# Add an MCP server (default scope: local — just you, this project)
+claude mcp add my-server -- npx -y @my-org/my-mcp-server
 
-# Add with environment variables
-claude mcp add snowflake-server npx -y @org/snowflake-mcp \
+# For all your projects / shared with the team via .mcp.json
+claude mcp add my-server --scope user    -- npx -y @my-org/my-mcp-server
+claude mcp add my-server --scope project -- npx -y @my-org/my-mcp-server
+
+# With environment variables (options go BEFORE the server command)
+claude mcp add snowflake-server \
   -e SNOWFLAKE_ACCOUNT=myaccount \
   -e SNOWFLAKE_USER=myuser \
-  -e SNOWFLAKE_PASSWORD=mypassword
+  -- npx -y @org/snowflake-mcp
+
+# Remote (HTTP) server
+claude mcp add --transport http my-remote https://mcp.example.com/mcp
 
 # List configured MCP servers
 claude mcp list
@@ -255,7 +294,8 @@ claude mcp remove my-server
 ```
 
 ```json
-// .claude/mcp_servers.json — project-level MCP config (commit to repo)
+// .mcp.json (repo root) — project-scoped MCP servers, committed and shared with the team
+// ${VAR} values are expanded from each developer's environment — never commit secrets
 {
   "mcpServers": {
     "snowflake": {
@@ -289,10 +329,10 @@ With an MCP server, Claude can:
 
 ## Hooks
 
-Hooks run shell commands automatically when Claude Code takes certain actions — for enforcing standards, running checks, or integrating with external systems.
+Hooks run shell commands automatically at specific points in Claude Code's lifecycle — for enforcing standards, running checks, or integrating with external systems. Each hook receives a JSON payload on **stdin** (session ID, tool name, tool input, ...); use `jq` to pull out what you need.
 
 ```json
-// ~/.claude/settings.json (or .claude/settings.json for project-level)
+// .claude/settings.json (project, commit it) or ~/.claude/settings.json (all projects)
 {
   "hooks": {
     "PostToolUse": [
@@ -301,7 +341,7 @@ Hooks run shell commands automatically when Claude Code takes certain actions �
         "hooks": [
           {
             "type": "command",
-            "command": "ruff check $CLAUDE_FILE_PATH --fix 2>&1 || true"
+            "command": "jq -r '.tool_input.file_path' | grep '\\.py$' | xargs -r ruff check --fix"
           }
         ]
       }
@@ -312,8 +352,15 @@ Hooks run shell commands automatically when Claude Code takes certain actions �
         "hooks": [
           {
             "type": "command",
-            "command": "echo \"[Hook] Shell command: $CLAUDE_BASH_COMMAND\""
+            "command": "jq -r '.tool_input.command' >> ~/.claude/bash-audit.log"
           }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "osascript -e 'display notification \"Claude Code finished\" with title \"Claude Code\"'" }
         ]
       }
     ]
@@ -321,87 +368,68 @@ Hooks run shell commands automatically when Claude Code takes certain actions �
 }
 ```
 
-**Hook event types:**
+**Hook events:**
 
 | Event | Triggers when |
 |-------|--------------|
-| `PreToolUse` | Before Claude calls a tool |
-| `PostToolUse` | After Claude calls a tool |
-| `Notification` | Claude sends a notification |
-| `Stop` | Claude finishes a turn |
+| `PreToolUse` | Before a tool runs — can block it (exit code 2, with the reason on stderr) |
+| `PostToolUse` | After a tool succeeds — e.g. format or lint the edited file |
+| `UserPromptSubmit` | When you submit a prompt — can add context or block it |
+| `Notification` | Claude Code sends a notification (e.g. waiting for permission) |
+| `Stop` / `SubagentStop` | The main agent / a subagent finishes responding |
+| `SessionStart` / `SessionEnd` | A session starts or ends |
+| `PreCompact` | Before the conversation is compacted |
 
-```json
-// Useful hook patterns
-
-// Auto-format Python after every file edit
-{
-  "matcher": "Edit",
-  "hooks": [{
-    "type": "command",
-    "command": "black $CLAUDE_FILE_PATH 2>/dev/null || true"
-  }]
-}
-
-// Run dbt compile after every SQL model edit
-{
-  "matcher": "Edit",
-  "hooks": [{
-    "type": "command",
-    "command": "if [[ $CLAUDE_FILE_PATH == *.sql ]]; then cd dbt && dbt compile --quiet; fi"
-  }]
-}
-
-// Notify on completion (macOS)
-{
-  "event": "Stop",
-  "hooks": [{
-    "type": "command",
-    "command": "osascript -e 'display notification \"Claude Code finished\" with title \"Claude Code\"'"
-  }]
-}
+```bash
+# A PreToolUse script that blocks writes to production dbt profiles
+#!/usr/bin/env bash
+file=$(jq -r '.tool_input.file_path // empty')
+if [[ "$file" == *profiles.yml ]]; then
+  echo "Editing profiles.yml is not allowed — change the template instead." >&2
+  exit 2          # exit code 2 = block the tool call and show the reason to Claude
+fi
 ```
+
+Use `/hooks` in a session to view and edit hooks interactively.
 
 ---
 
 ## Custom Slash Commands (Skills)
 
-Create project-specific slash commands in `.claude/agents/`.
+Skills are reusable instructions Claude can load on demand — and you can invoke them as slash commands. Put project skills in `.claude/skills/<name>/SKILL.md` (commit them to share with the team) or personal ones in `~/.claude/skills/`. The older `.claude/commands/<name>.md` format still works.
 
 ```markdown
-<!-- .claude/agents/dbt-review.md -->
+<!-- .claude/skills/dbt-review/SKILL.md -->
 ---
 name: dbt-review
-description: Review a dbt model for best practices
+description: Review a dbt model for best practices. Use when asked to review or check a dbt model.
 ---
 
-When invoked with /dbt-review:
+Review the dbt model at $ARGUMENTS (or the most recently edited .sql file):
 
-1. Read the SQL file passed as argument (or the most recently edited .sql file)
-2. Check for:
-   - Missing ref() usage (hardcoded table names)
+1. Check for:
+   - Hardcoded table names instead of ref() / source()
    - SELECT * usage
-   - Missing tests in schema.yml
-   - Missing documentation in schema.yml
-   - Performance issues (cross joins, missing WHERE on large tables)
-   - Incorrect materialization for the model's usage pattern
-3. Report findings as a prioritized list: HIGH / MEDIUM / LOW
-4. Suggest the specific fix for each finding
+   - Missing tests or documentation in the model's YAML
+   - Performance issues (cross joins, missing filters on large tables)
+   - A materialization that doesn't fit how the model is used
+2. Report findings as a prioritized list: HIGH / MEDIUM / LOW
+3. Suggest the specific fix for each finding
 ```
 
 ```markdown
-<!-- .claude/agents/pipeline-debug.md -->
+<!-- .claude/skills/pipeline-debug/SKILL.md -->
 ---
 name: pipeline-debug
-description: Debug a failing Airflow DAG
+description: Debug a failing Airflow DAG. Use when a DAG run has failed.
 ---
 
-When invoked with /pipeline-debug <dag_name>:
+Debug the DAG named in $ARGUMENTS:
 
-1. Check the Airflow logs for the most recent failed run
-2. Identify the failing task and the error message
-3. Read the DAG file and the operator implementation
-4. Diagnose the root cause
-5. Propose a fix with code changes
+1. Find the most recent failed run and read the failing task's logs
+2. Read the DAG file and the operator implementation
+3. Diagnose the root cause
+4. Propose a fix with code changes
 ```
 
 ```bash
@@ -410,6 +438,8 @@ When invoked with /pipeline-debug <dag_name>:
 > /pipeline-debug daily_orders
 ```
 
+**Subagents** are different: specialized assistants with their own system prompt, tools, and context window, defined in `.claude/agents/<name>.md`. Claude delegates tasks to them (e.g. a read-only `sql-reviewer` agent), which keeps the main conversation's context clean.
+
 ---
 
 ## Headless & CI Mode
@@ -417,9 +447,12 @@ When invoked with /pipeline-debug <dag_name>:
 Run Claude Code non-interactively in scripts and CI pipelines.
 
 ```bash
-# Single command, print output, exit
-claude --print "Review the changes in this PR for data quality issues" \
-  --dangerously-skip-permissions
+# Single command, print output, exit — pre-approve only the tools it needs
+claude -p "Review the changes in this branch for data quality issues" \
+  --allowedTools "Read,Grep,Glob,Bash(git diff:*),Bash(git log:*)"
+
+# Machine-readable output for scripts
+claude -p "List dbt models without tests" --output-format json | jq -r '.result'
 
 # In a CI pipeline (GitHub Actions)
 ```
@@ -447,11 +480,13 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          claude --print \
+          # Read-only tool allow-list: PR code is untrusted input, so never
+          # combine it with --dangerously-skip-permissions
+          claude -p \
             "Review the dbt model changes in this PR. Check for: missing tests, \
              SELECT *, hardcoded table names, performance issues. \
              Output a markdown summary." \
-            --dangerously-skip-permissions \
+            --allowedTools "Read,Grep,Glob,Bash(git diff:*)" \
             > review.md
 
       - name: Post review as PR comment
@@ -459,6 +494,8 @@ jobs:
         with:
           path: review.md
 ```
+
+> Anthropic also maintains an official GitHub Action, [`anthropics/claude-code-action`](https://github.com/anthropics/claude-code-action), which handles PR comments, `@claude` mentions, and permissions for you. Run `/install-github-app` in a session to set it up.
 
 ---
 
@@ -517,6 +554,80 @@ jobs:
   and task dependencies with >> to use the TaskFlow API (@task decorator).
   Keep the same logic and schedules. Run the tests after each migration.
 ```
+
+---
+
+## Common Pitfalls
+
+| Pitfall | Symptom | Fix |
+|---------|---------|-----|
+| Vague requests ("clean up the pipeline") | Big, unfocused diffs | Say the goal, the constraints, and how to verify ("…and run `dbt build -s model+`") |
+| No `CLAUDE.md` | Repeating conventions every session; inconsistent style | `/init`, then keep it short and specific: commands, conventions, gotchas |
+| A bloated `CLAUDE.md` | Important rules get lost among trivia | Keep it to what's non-obvious; link out to docs for details |
+| `--dangerously-skip-permissions` on your laptop or in CI on PR code | An agent can run anything, including prompt-injected commands | Allow-lists (`--allowedTools`, settings permissions); bypass mode only in isolated containers |
+| Giving it production credentials | A mistaken command hits prod data | Dev credentials by default; read-only roles for MCP servers; approvals for writes |
+| One marathon session for many tasks | Context fills up; quality drops | `/clear` between unrelated tasks; use `/compact` for long ones; plan mode for large changes |
+| Accepting changes without review | Subtle bugs merged | Ask it to run tests and show the diff; review like a teammate's PR |
+| Secrets pasted into prompts or committed MCP configs | Credentials in logs and Git history | `${ENV_VAR}` expansion in `.mcp.json`; secrets managers |
+
+---
+
+## Cheat Sheet
+
+| Task | Command |
+|------|---------|
+| Start in a project | `cd repo && claude` |
+| Continue / resume a session | `claude -c` · `claude -r` (pick one) |
+| One-shot (scripts, CI) | `claude -p "prompt" --output-format json` |
+| Create project memory | `/init` → edit `CLAUDE.md` |
+| Plan before changing anything | Shift+Tab to plan mode, or `claude --permission-mode plan` |
+| Pre-approve safe tools | `claude --allowedTools "Read,Grep,Glob,Bash(dbt compile:*)"` |
+| Clear / compact context | `/clear` · `/compact` |
+| Switch model | `/model` |
+| Add an MCP server | `claude mcp add <name> -- <command>` · `--scope project` writes `.mcp.json` |
+| Hooks / permissions / agents | `/hooks` · `/permissions` · `/agents` |
+| Code review | `/code-review` |
+| Reference a file in a prompt | `@models/marts/fct_orders.sql` |
+| Run a shell command inline | `! dbt compile -s fct_orders` |
+
+**Where things live**
+
+| File | Purpose |
+|------|---------|
+| `CLAUDE.md` (repo) / `~/.claude/CLAUDE.md` | Project / personal instructions loaded every session |
+| `.claude/settings.json` | Team settings: permissions, hooks, env (commit it) |
+| `.claude/settings.local.json` | Your personal overrides (git-ignored) |
+| `.mcp.json` | Project MCP servers (commit it; no secrets) |
+| `.claude/skills/<name>/SKILL.md` | Skills / custom slash commands |
+| `.claude/agents/<name>.md` | Subagents |
+
+**Good prompt shape:** what to change · where · constraints (style, no new dependencies) · how to verify (tests, `dbt build`, a query) · what "done" looks like
+
+---
+
+## Interview Questions
+
+**Q: How is an agentic coding tool different from code completion?**
+A: Completion predicts the next few lines where your cursor is. An agentic tool takes a task, explores the codebase to understand it, makes coordinated edits across files, runs commands to verify (tests, builds, linters), and iterates on failures — closer to delegating a ticket than to autocomplete. That makes it most useful for multi-file changes, debugging, migrations, and writing tests, and it means you review its output like a teammate's pull request.
+
+**Q: How would you safely use an AI coding agent on a data platform repository?**
+A: Least privilege and verification: dev or read-only credentials by default, an allow-list of commands (`dbt compile`, `pytest`, `git diff`), approval for anything that writes to shared systems, and no permission bypass outside sandboxes. Put conventions in `CLAUDE.md`, enforce standards with hooks (formatters, linters, blocking edits to sensitive files), require tests or `dbt build` to pass, and review diffs through normal PRs and CI.
+
+**Q: What is MCP and why does it matter for data engineering?**
+A: The Model Context Protocol is an open standard for connecting AI applications to tools and data sources through "MCP servers". Instead of pasting query results into a chat, the agent can query the warehouse, read Airflow run logs, or browse a data catalog directly, through a server you control and scope (for example a read-only Snowflake role). One server works across every MCP-compatible client.
+
+**Q: How do you give an AI agent the context it needs about a project?**
+A: Layered context: a concise `CLAUDE.md` with conventions, commands, and gotchas; clear code structure and docs it can read; skills for repeatable workflows; MCP connections to live metadata (schemas, lineage, run history); and task prompts that state the goal and how to verify it. Keep the always-loaded context small and let the agent pull in details on demand.
+
+---
+
+## Further Reading
+
+- [Claude Code documentation](https://code.claude.com/docs/en/overview)
+- [Claude Code best practices](https://www.anthropic.com/engineering/claude-code-best-practices)
+- [Hooks reference](https://code.claude.com/docs/en/hooks) · [Skills](https://code.claude.com/docs/en/skills) · [MCP](https://code.claude.com/docs/en/mcp)
+- [Claude Code GitHub Action](https://github.com/anthropics/claude-code-action)
+- [Model Context Protocol](https://modelcontextprotocol.io/)
 
 ---
 
