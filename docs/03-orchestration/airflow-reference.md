@@ -137,7 +137,7 @@ default_args = {
     "retries":          2,
     "retry_delay":      timedelta(minutes=5),
     "email_on_failure": True,
-    "email":            ["[REDACTED_EMAIL_ADDRESS_5]"],
+    "email":            ["data-alerts@example.com"],
 }
 
 # DAG definition

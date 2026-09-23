@@ -379,7 +379,7 @@ ssh -L 5432:db-server:5432 alice@jump-host
 # Now connect to localhost:5432 to reach db-server:5432
 
 # Generate SSH key
-ssh-keygen -t ed25519 -C "[REDACTED_EMAIL_ADDRESS_9]"
+ssh-keygen -t ed25519 -C "alice@example.com"
 ssh-copy-id alice@server     # copy public key to server
 ```
 

@@ -105,7 +105,7 @@ class LLMCallLog:
     output_tokens:  int
     latency_ms:     float
     cost_usd:       float
-    [REDACTED_SQL_PASSWORD_1]:           bool
+    success:        bool
     error:          str
     stop_reason:    str
     prompt_preview: str           # first 200 chars of prompt
@@ -149,7 +149,7 @@ def tracked_call(feature: str, user_id: str = "system", **kwargs) -> str:
             cost_usd      = compute_cost(response.model,
                                          response.usage.input_tokens,
                                          response.usage.output_tokens),
-            [REDACTED_SQL_PASSWORD_1]          = True,
+            success       = True,
             error         = "",
             stop_reason   = response.stop_reason,
             prompt_preview = prompt_preview,
@@ -164,7 +164,7 @@ def tracked_call(feature: str, user_id: str = "system", **kwargs) -> str:
             call_id=call_id, timestamp=datetime.utcnow().isoformat(),
             model=kwargs.get("model", "unknown"), feature=feature,
             user_id=user_id, input_tokens=0, output_tokens=0,
-            latency_ms=latency, cost_usd=0.0, [REDACTED_SQL_PASSWORD_1]=False,
+            latency_ms=latency, cost_usd=0.0, success=False,
             error=str(e), stop_reason="error",
             prompt_preview=prompt_preview, output_preview=""
         )
@@ -208,7 +208,7 @@ def analyze_costs(log_file: str = "llm_calls.jsonl") -> dict:
         "avg_input_tokens":   df["input_tokens"].mean(),
         "avg_output_tokens":  df["output_tokens"].mean(),
         "p95_latency_ms":     df["latency_ms"].quantile(0.95),
-        "error_rate":         (~df["[REDACTED_SQL_PASSWORD_1]"]).mean(),
+        "error_rate":         (~df["success"]).mean(),
         "calls_today":        df[df["date"] == pd.Timestamp.today().date()].shape[0],
     }
 

@@ -422,11 +422,11 @@ def evaluate_model(model_fn, test_cases: list[dict]) -> dict:
     results = []
     for case in test_cases:
         output = model_fn(case["input"])
-        [REDACTED_SQL_PASSWORD_1]ed = case["check"](output, case["expected"])
-        results.append({"input": case["input"], "output": output, "[REDACTED_SQL_PASSWORD_1]ed": [REDACTED_SQL_PASSWORD_1]ed})
+        passed = case["check"](output, case["expected"])
+        results.append({"input": case["input"], "output": output, "passed": passed})
 
-    [REDACTED_SQL_PASSWORD_1]_rate = sum(r["[REDACTED_SQL_PASSWORD_1]ed"] for r in results) / len(results)
-    return {"[REDACTED_SQL_PASSWORD_1]_rate": [REDACTED_SQL_PASSWORD_1]_rate, "details": results}
+    pass_rate = sum(r["passed"] for r in results) / len(results)
+    return {"pass_rate": pass_rate, "details": results}
 
 # Test cases for SQL generation
 sql_test_cases = [

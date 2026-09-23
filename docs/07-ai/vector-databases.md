@@ -102,7 +102,7 @@ import numpy as np
 from openai import OpenAI
 
 openai_client = OpenAI()
-conn = psycopg2.connect("postgresql://user:[REDACTED_SQL_PASSWORD_1]@localhost:5432/mydb")
+conn = psycopg2.connect("postgresql://user:pass@localhost:5432/mydb")
 register_vector(conn)
 
 def embed_batch(texts: list[str]) -> list[list[float]]:

@@ -514,7 +514,7 @@ quality:
 sla:
   availability: "99.9%"
   freshness: "data available by 06:00 UTC"
-  support_contact: "[REDACTED_EMAIL_ADDRESS_8]"
+  support_contact: "data-team@example.com"
 ```
 
 ---

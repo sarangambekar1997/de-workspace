@@ -437,7 +437,7 @@ resource "aws_secretsmanager_secret_version" "snowflake_creds" {
   secret_string = jsonencode({
     account  = var.snowflake_account
     username = var.snowflake_username
-    [REDACTED_SQL_PASSWORD_1]word = var.snowflake_[REDACTED_SQL_PASSWORD_1]word    # pass via env var, never hardcode
+    password = var.snowflake_password    # pass via env var, never hardcode
   })
 }
 
@@ -464,7 +464,7 @@ terraform {
 provider "snowflake" {
   account  = var.snowflake_account
   username = var.snowflake_username
-  [REDACTED_SQL_PASSWORD_1]word = var.snowflake_[REDACTED_SQL_PASSWORD_1]word      # use env: SNOWFLAKE_PASSWORD
+  password = var.snowflake_password      # use env: SNOWFLAKE_PASSWORD
   role     = "SYSADMIN"
 }
 
@@ -545,7 +545,7 @@ resource "snowflake_user" "dbt_service_account" {
   login_name   = "dbt_sa_${var.environment}"
   default_role = snowflake_role.transformer.name
   default_warehouse = snowflake_warehouse.transform.name
-  must_change_[REDACTED_SQL_PASSWORD_1]word = false
+  must_change_password = false
 }
 
 resource "snowflake_grant_account_role" "dbt_sa_role" {
@@ -600,9 +600,9 @@ resource "databricks_secret_scope" "pipeline_secrets" {
   name = "pipeline-secrets-${var.environment}"
 }
 
-resource "databricks_secret" "snowflake_[REDACTED_SQL_PASSWORD_1]word" {
-  key          = "snowflake-[REDACTED_SQL_PASSWORD_1]word"
-  string_value = var.snowflake_[REDACTED_SQL_PASSWORD_1]word
+resource "databricks_secret" "snowflake_password" {
+  key          = "snowflake-password"
+  string_value = var.snowflake_password
   scope        = databricks_secret_scope.pipeline_secrets.name
 }
 

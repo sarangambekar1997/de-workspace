@@ -133,7 +133,7 @@ claude_client  = anthropic.Anthropic()
 documents = [
     {"id": "orders_schema",    "text": "The orders table has: order_id (VARCHAR PK), customer_id (INT FK), amount (DECIMAL 10,2), status (VARCHAR: placed/shipped/delivered/cancelled), created_at (TIMESTAMP)."},
     {"id": "customers_schema", "text": "The customers table has: id (INT PK), name (VARCHAR), email (VARCHAR UNIQUE), region (VARCHAR), created_at (TIMESTAMP)."},
-    {"id": "pipeline_sla",     "text": "The orders pipeline runs at 2am UTC daily. SLA: data must be available by 6am UTC. Alert: [REDACTED_EMAIL_ADDRESS_10]."},
+    {"id": "pipeline_sla",     "text": "The orders pipeline runs at 2am UTC daily. SLA: data must be available by 6am UTC. Alert: data-oncall@example.com."},
     {"id": "data_freshness",   "text": "All tables in the gold layer are updated daily. The silver layer updates every 6 hours. The bronze layer is near-real-time via Kafka."},
     {"id": "access_policy",    "text": "Gold layer tables require the analyst role. Bronze and silver require the engineer role. PII columns are masked for non-PII roles."},
 ]

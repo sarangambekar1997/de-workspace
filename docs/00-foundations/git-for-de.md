@@ -57,7 +57,7 @@ Working tree → (git add) → Staging area → (git commit) → Local repo → 
 ```bash
 # ── Setup ─────────────────────────────────────────
 git config --global user.name "Alice Smith"
-git config --global user.email "[REDACTED_EMAIL_ADDRESS_9]"
+git config --global user.email "alice@example.com"
 git config --global core.editor "vim"
 git config --list                          # view all config
 

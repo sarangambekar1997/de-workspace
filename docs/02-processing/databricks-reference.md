@@ -461,7 +461,7 @@ Workflows orchestrate multi-task pipelines — notebooks, Python scripts, dbt co
     }
   }],
   "email_notifications": {
-    "on_failure": ["[REDACTED_EMAIL_ADDRESS_8]"]
+    "on_failure": ["data-team@example.com"]
   }
 }
 ```

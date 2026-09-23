@@ -29,11 +29,11 @@
 
 ## Why Evals Matter
 
-LLM outputs are probabilistic. Unlike traditional software, there's no assertion that always [REDACTED_SQL_PASSWORD_1]s — you need a measurement strategy.
+LLM outputs are probabilistic. Unlike traditional software, there's no assertion that always passes — you need a measurement strategy.
 
 ```
 Traditional test:
-  assert sum([1, 2, 3]) == 6   # deterministic — always [REDACTED_SQL_PASSWORD_1]s or always fails
+  assert sum([1, 2, 3]) == 6   # deterministic — always passes or always fails
 
 LLM "test":
   response = llm("Summarize this doc")
@@ -147,7 +147,7 @@ JUDGE_MODEL = "claude-sonnet-5"  # use a capable model as judge
 class EvalResult:
     score:      float   # 0.0 to 1.0
     reasoning:  str
-    [REDACTED_SQL_PASSWORD_1]ed:      bool
+    passed:      bool
 
 def judge_faithfulness(question: str, context: str, answer: str) -> EvalResult:
     """Does the answer only use information from the context?"""
@@ -181,7 +181,7 @@ Respond with JSON:
     return EvalResult(
         score=data["score"],
         reasoning=data["reasoning"],
-        [REDACTED_SQL_PASSWORD_1]ed=data["score"] >= 0.7
+        passed=data["score"] >= 0.7
     )
 
 def judge_relevance(question: str, answer: str) -> EvalResult:
@@ -200,7 +200,7 @@ Respond with JSON: {{"score": <float>, "reasoning": "<one sentence>"}}"""
     )
     import json
     data = json.loads(response.content[0].text)
-    return EvalResult(score=data["score"], reasoning=data["reasoning"], [REDACTED_SQL_PASSWORD_1]ed=data["score"] >= 0.7)
+    return EvalResult(score=data["score"], reasoning=data["reasoning"], passed=data["score"] >= 0.7)
 
 def judge_completeness(question: str, answer: str, expected_points: list[str]) -> EvalResult:
     """Does the answer cover the expected key points?"""
@@ -223,7 +223,7 @@ Respond with JSON: {{"score": <float>, "covered": [true/false, ...], "reasoning"
     )
     import json
     data = json.loads(response.content[0].text)
-    return EvalResult(score=data["score"], reasoning=data["reasoning"], [REDACTED_SQL_PASSWORD_1]ed=data["score"] >= 0.7)
+    return EvalResult(score=data["score"], reasoning=data["reasoning"], passed=data["score"] >= 0.7)
 
 # Run evals
 context = "The orders table has order_id (VARCHAR PK), amount (DECIMAL), status (VARCHAR), created_at (TIMESTAMP)."
@@ -410,18 +410,18 @@ def run_eval_suite(rag_fn, eval_cases: list[dict], threshold: float = 0.7) -> di
             "question": case["question"],
             "answer":   answer,
             "metrics":  metrics,
-            "[REDACTED_SQL_PASSWORD_1]ed":   metrics["overall"] >= threshold,
+            "passed":   metrics["overall"] >= threshold,
         })
 
-    [REDACTED_SQL_PASSWORD_1]_count  = sum(1 for r in results if r["[REDACTED_SQL_PASSWORD_1]ed"])
-    fail_count = len(results) - [REDACTED_SQL_PASSWORD_1]_count
+    pass_count  = sum(1 for r in results if r["passed"])
+    fail_count = len(results) - pass_count
 
     summary = {
         "timestamp":  datetime.utcnow().isoformat(),
         "total":      len(results),
-        "[REDACTED_SQL_PASSWORD_1]ed":      [REDACTED_SQL_PASSWORD_1]_count,
+        "passed":      pass_count,
         "failed":     fail_count,
-        "[REDACTED_SQL_PASSWORD_1]_rate":   [REDACTED_SQL_PASSWORD_1]_count / len(results),
+        "pass_rate":   pass_count / len(results),
         "avg_score":  sum(r["metrics"]["overall"] for r in results) / len(results),
         "details":    results,
     }
@@ -517,29 +517,29 @@ The workflow for improving LLM applications systematically.
 # Automated eval-driven CI pipeline
 
 def ci_eval_gate(rag_fn, eval_dataset: list[dict],
-                 min_[REDACTED_SQL_PASSWORD_1]_rate: float = 0.80,
+                 min_pass_rate: float = 0.80,
                  min_avg_score: float = 0.75) -> bool:
     """Returns True if the system meets quality gates."""
     results = run_eval_suite(rag_fn, eval_dataset)
 
-    print(f"Pass rate: {results['[REDACTED_SQL_PASSWORD_1]_rate']:.0%} (min: {min_[REDACTED_SQL_PASSWORD_1]_rate:.0%})")
+    print(f"Pass rate: {results['pass_rate']:.0%} (min: {min_pass_rate:.0%})")
     print(f"Avg score: {results['avg_score']:.3f} (min: {min_avg_score:.3f})")
 
-    gate_[REDACTED_SQL_PASSWORD_1]ed = (
-        results["[REDACTED_SQL_PASSWORD_1]_rate"] >= min_[REDACTED_SQL_PASSWORD_1]_rate and
+    gate_passed = (
+        results["pass_rate"] >= min_pass_rate and
         results["avg_score"]   >= min_avg_score
     )
 
     # Print failures for debugging
-    if not gate_[REDACTED_SQL_PASSWORD_1]ed:
+    if not gate_passed:
         print("\nFailed cases:")
         for r in results["details"]:
-            if not r["[REDACTED_SQL_PASSWORD_1]ed"]:
+            if not r["passed"]:
                 print(f"  Q: {r['question']}")
                 print(f"  Score: {r['metrics']['overall']:.3f}")
                 print(f"  A: {r['answer'][:200]}\n")
 
-    return gate_[REDACTED_SQL_PASSWORD_1]ed
+    return gate_passed
 
 # In CI:
 if not ci_eval_gate(my_rag_pipeline, eval_dataset):

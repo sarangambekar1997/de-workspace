@@ -438,7 +438,7 @@ import mlflow
 
 # Tracking server is auto-configured
 # Experiments live in /Users/<email>/my-experiment
-mlflow.set_experiment("/Users/[REDACTED_EMAIL_ADDRESS_11]/orders-forecasting")
+mlflow.set_experiment("/Users/alice@example.com/orders-forecasting")
 
 with mlflow.start_run():
     mlflow.log_param("model", "xgboost")

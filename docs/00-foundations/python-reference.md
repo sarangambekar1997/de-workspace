@@ -279,12 +279,12 @@ record["name"]               # "Alice" — raises KeyError if missing
 record.get("phone", "N/A")   # safe — returns default if missing
 
 # Mutate
-record["email"] = "[REDACTED_EMAIL_ADDRESS_4]"   # add or update
+record["email"] = "alice@example.com"   # add or update
 del record["dept"]            # remove key
 
 # Iterate
 record.keys()    # dict_keys(["id", "name", "email"])
-record.values()  # dict_values([1, "Alice", "[REDACTED_EMAIL_ADDRESS_4]"])
+record.values()  # dict_values([1, "Alice", "alice@example.com"])
 record.items()   # dict_items([("id",1), ("name","Alice"), ...])
 
 "name" in record   # True — key membership, O(1)
