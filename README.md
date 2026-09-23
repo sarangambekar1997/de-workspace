@@ -5,7 +5,9 @@ from first query to production pipelines, plus the AI/LLM engineering that now s
 
 Every guide goes **Basic → Intermediate → Advanced** with working code examples.
 
-**→ Start here: [Full index & learning paths](docs/README.md)**
+**→ Read it as a website: [sarangambekar1997.github.io/de-workspace](https://sarangambekar1997.github.io/de-workspace/)** — searchable, with navigation and dark mode
+
+**→ Or start here on GitHub: [Full index & learning paths](docs/README.md)**
 
 ---
 
@@ -52,4 +54,14 @@ Copy [`docs/_template.md`](docs/_template.md). Every guide uses the same section
 8. Further Reading
 9. Next / Back navigation at the bottom
 
-Then add the guide to [`docs/README.md`](docs/README.md) and to any learning path it belongs in.
+Then add the guide to [`docs/README.md`](docs/README.md), to any learning path it belongs in, and to the `nav` section of [`mkdocs.yml`](mkdocs.yml).
+
+## Previewing the site locally
+
+```bash
+pip install -r requirements-docs.txt
+mkdocs serve                 # live preview at http://127.0.0.1:8000
+mkdocs build --strict        # the same check CI runs: fails on broken links or anchors
+```
+
+Pull requests that touch `docs/` are built in strict mode by CI; merges to `main` deploy the site to GitHub Pages.
