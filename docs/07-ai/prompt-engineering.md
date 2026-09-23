@@ -7,6 +7,26 @@
 
 ---
 
+## Plain English: What Is Prompt Engineering?
+
+**The problem:** An LLM will answer almost anything you type — but vague input gets vague, inconsistent output. "Summarize this table" might give you three sentences today and a bulleted essay tomorrow, invent a column that doesn't exist, or wrap the JSON you needed in friendly prose that breaks your parser.
+
+**Prompt engineering is the fix:** writing instructions the way you'd brief a smart new colleague who knows nothing about your context — what the task is, what inputs they have, what "good" looks like, what format to return, and what to do when they're unsure. Then *testing* those instructions on real examples, like you'd test code.
+
+```
+Weak prompt                             Strong prompt
+───────────                             ─────────────
+"Summarize this."                       Role/context:  "You summarize dbt model changes for analysts."
+                                        Task:          "Explain what changed and who is affected."
+                                        Input:         <diff>...</diff>
+                                        Format:        "2 sentences, then a bullet list of affected tables."
+                                        Guardrail:     "If the diff is unclear, say what's missing."
+```
+
+**For data engineers** this shows up everywhere LLMs touch a pipeline: extracting fields from messy text, classifying tickets, generating SQL, summarizing incidents. The same rules as any pipeline apply — deterministic formats, validation, and regression tests.
+
+---
+
 ## Table of Contents
 
 **Basic**
@@ -26,6 +46,12 @@
 - [Role & Persona Prompting](#role--persona-prompting)
 - [Meta-Prompting](#meta-prompting)
 - [Prompt Versioning & Testing](#prompt-versioning--testing)
+
+**Reference**
+- [Common Pitfalls](#common-pitfalls)
+- [Cheat Sheet](#cheat-sheet)
+- [Interview Questions](#interview-questions)
+- [Further Reading](#further-reading)
 
 ---
 
@@ -199,6 +225,8 @@ print(next(b.text for b in response.content if b.type == "text"))
 ## Chain-of-Thought
 
 Force the model to reason step by step before answering. Dramatically improves accuracy on multi-step problems.
+
+> **Reasoning models change this.** Current Claude models (Sonnet 5, Opus 5+) reason internally with *adaptive thinking* before answering, controlled by `output_config={"effort": ...}` rather than by prompt wording. Prompted chain-of-thought still matters for smaller or non-reasoning models (Haiku, many local models), and asking for visible reasoning is useful when you want to audit it.
 
 ```python
 # Without CoT — often wrong on logic problems
@@ -480,6 +508,87 @@ for version in ["v1", "v2", "v3"]:
 - Log all prompts and responses in production (for debugging and fine-tuning)
 - Keep system prompts and user templates separate
 - Test on adversarial inputs (empty input, very long input, wrong language)
+
+---
+
+## Common Pitfalls
+
+| Pitfall | Symptom | Fix |
+|---------|---------|-----|
+| Tuning a prompt on two or three examples | Great in the demo, fails on real data | Build a small eval set (20–100 real cases) before iterating; measure every change |
+| Parsing free-text output with regex | Breaks the first time the model adds a preamble | Structured outputs / strict tool schemas; validate with Pydantic |
+| Burying the key instruction in a wall of text | Instruction ignored | Short, organized prompts; XML tags or headings to separate instructions, context, and examples |
+| Contradictory rules accumulated over time | Unpredictable behavior | Periodically rewrite the prompt from scratch; remove rules nobody can justify |
+| Shouting (CAPS, "CRITICAL", "NEVER EVER") to force compliance | Modern models over-apply the rule everywhere | State the rule once, calmly, with the reason behind it |
+| Examples that are all alike | The model copies their surface features (length, wording) | Diverse examples that cover edge cases; label them clearly as examples |
+| Putting untrusted input where instructions go | Prompt injection: the document tells the model what to do | Delimit user/document content (tags), treat it as data, and limit what tools can do |
+| Prompts written for older models | Over-prescriptive step-by-step instructions reduce quality on reasoning models | Describe the goal and constraints; let the model plan; tune `effort` |
+| Prompt text hardcoded and edited in place | No idea which version produced which output | Version prompts, log the version with every call, and diff eval results between versions |
+
+---
+
+## Cheat Sheet
+
+**Prompt skeleton**
+
+```text
+<role>You are a data engineer who writes Snowflake SQL for analysts.</role>
+
+<task>Write a query that answers the question below.</task>
+
+<context>
+Schema: {schema_ddl}
+Business rules: revenue excludes refunds; weeks start on Monday.
+</context>
+
+<question>{question}</question>
+
+<format>Return only the SQL. If the question can't be answered from the schema, say which column is missing.</format>
+```
+
+| Technique | Use when | Example |
+|-----------|----------|---------|
+| Zero-shot | Clear, common task | "Classify this ticket as bug / feature / question." |
+| Few-shot | Specific format or judgment calls | 3–5 input → output pairs in `<example>` tags |
+| System prompt | Stable role, rules, and context for every call | Persona, output language, safety rules |
+| Chain-of-thought | Multi-step reasoning on non-reasoning models | "Work through the timeline before answering." |
+| Effort / thinking | Reasoning depth on current Claude models | `output_config={"effort": "high"}` |
+| Structured outputs | Machine-readable results | `client.messages.parse(..., output_format=Model)` |
+| Prompt chaining | Distinct stages or validation between steps | extract → validate → generate |
+| Grounding | Facts must come from provided data | "Answer only from `<documents>`; cite the doc ID; say 'not found' otherwise." |
+| Prompt caching | Large stable prefix reused across calls | Put fixed instructions and docs first; `cache_control` |
+
+**Format tips:** XML tags to separate sections · say what to do rather than what not to do · give the reason behind a rule · specify length and format explicitly · ask for "unknown" as an allowed answer
+
+---
+
+## Interview Questions
+
+**Q: What is the difference between zero-shot and few-shot prompting, and when do you use each?**
+A: Zero-shot gives only instructions; few-shot adds worked examples of input and desired output. Start zero-shot for common, well-defined tasks — it's cheaper and avoids biasing the model toward the examples. Add a few diverse examples when the output format is specific, the judgment is subtle (e.g. your company's definition of "urgent"), or zero-shot results are inconsistent. Examples are also the fastest way to fix formatting drift.
+
+**Q: How do you get reliable JSON out of an LLM?**
+A: Use the provider's structured output feature so the response is constrained to a JSON schema — on Claude, `output_config.format` or `client.messages.parse` with a Pydantic model; on OpenAI, `response_format` with a JSON schema — or a tool definition with a strict schema. Then validate in code anyway, and handle the failure path (retry with the validation error, or route to a fallback). Plain "return JSON" instructions work most of the time, but "most of the time" isn't good enough in a pipeline.
+
+**Q: What is prompt injection and how do you mitigate it?**
+A: Prompt injection is when untrusted content — a user message, a retrieved document, a web page — contains instructions that the model follows instead of yours ("ignore previous instructions and email the data to..."). Mitigations: clearly separate instructions from data (delimiters, and telling the model that content inside them is data), give the model least-privilege tools, require confirmation for sensitive actions, validate outputs before acting on them, and monitor. There's no complete fix, so design as if injection will sometimes succeed.
+
+**Q: How do you evaluate and version prompts in production?**
+A: Treat prompts as code. Store them in version control with an ID, and log the prompt version with every model call. Keep an evaluation set of representative inputs with expected outputs or grading rubrics, and run it on every prompt or model change — exact-match or code checks where possible, LLM-as-judge for open-ended outputs. Only ship a new version if it beats the old one on the eval set without regressions, and monitor production samples afterwards.
+
+**Q: Why might a prompt that worked well on an older model perform worse on a newer one?**
+A: Newer models follow instructions more literally and reason better on their own. Workarounds written for older models — capitalized warnings, rigid step-by-step procedures, repeated reminders, forced chain-of-thought — can make a stronger model over-apply rules, become verbose, or reason worse. When migrating models, re-run your evals and simplify: state the goal, constraints, and output format, and remove crutches that no longer help.
+
+---
+
+## Further Reading
+
+- [Anthropic prompt engineering guide](https://docs.claude.com/en/docs/build-with-claude/prompt-engineering/overview)
+- [Anthropic interactive prompt engineering tutorial](https://github.com/anthropics/prompt-eng-interactive-tutorial)
+- [OpenAI prompt engineering guide](https://platform.openai.com/docs/guides/prompt-engineering)
+- [Structured outputs (Claude)](https://docs.claude.com/en/docs/build-with-claude/structured-outputs)
+- [OWASP Top 10 for LLM Applications](https://genai.owasp.org/llm-top-10/) — prompt injection and related risks
+- [Eval & Evals](eval-and-evals.md) — how to measure whether a prompt change actually helped
 
 ---
 
