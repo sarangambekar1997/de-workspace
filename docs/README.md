@@ -11,73 +11,72 @@ Each guide follows a **Basic → Intermediate → Advanced** progression with re
 
 | Guide | What you'll learn |
 |-------|------------------|
-| [SQL Reference](sql-reference.md) | SELECT, filtering, joins, aggregates, CTEs, window functions, indexes, transactions |
-| [Python for DE](python-reference.md) | Data types, OOP, generators, decorators, pandas, APIs, DE patterns |
-| [Linux & Bash](linux-bash.md) | Filesystem, text processing, bash scripting, cron, SSH, DE workflows |
-| [Git for DE](git-for-de.md) | Branching, merging, dbt CI/CD, git hooks, team workflows |
-| [Cloud Storage](cloud-storage.md) | S3, GCS, ADLS Gen2, medallion layout, partitioning, IAM, Python SDKs |
+| [SQL Reference](00-foundations/sql-reference.md) | SELECT, filtering, joins, aggregates, CTEs, window functions, indexes, transactions |
+| [Python for DE](00-foundations/python-reference.md) | Data types, OOP, generators, decorators, pandas, APIs, DE patterns |
+| [Linux & Bash](00-foundations/linux-bash.md) | Filesystem, text processing, bash scripting, cron, SSH, DE workflows |
+| [Git for DE](00-foundations/git-for-de.md) | Branching, merging, dbt CI/CD, git hooks, team workflows |
+| [Cloud Storage](01-storage/cloud-storage.md) | S3, GCS, ADLS Gen2, medallion layout, partitioning, IAM, Python SDKs |
 
 ### Processing & Compute
 
 | Guide | What you'll learn |
 |-------|------------------|
-| [PySpark Reference](pyspark-reference.md) | DataFrames, transformations, window functions, UDFs, streaming, optimization |
-| [Docker for DE](docker-reference.md) | Images, Dockerfile, volumes, networking, Docker Compose, Airflow/Spark in Docker |
-| [Databricks](databricks-reference.md) | Delta Lake, Auto Loader, DLT, Unity Catalog, Workflows, Delta vs Iceberg vs Hudi |
+| [PySpark Reference](02-processing/pyspark-reference.md) | DataFrames, transformations, window functions, UDFs, streaming, optimization |
+| [Docker for DE](06-infrastructure/docker-reference.md) | Images, Dockerfile, volumes, networking, Docker Compose, Airflow/Spark in Docker |
+| [Databricks](02-processing/databricks-reference.md) | Delta Lake, Auto Loader, DLT, Unity Catalog, Workflows, Delta vs Iceberg vs Hudi |
 
 ### Orchestration & Streaming
 
 | Guide | What you'll learn |
 |-------|------------------|
-| [Apache Airflow](airflow-reference.md) | DAGs, operators, XComs, sensors, TaskFlow API, dynamic DAGs, CI/CD |
-| [Apache Kafka](kafka-reference.md) | Topics, producers, consumers, Schema Registry, Kafka Connect, DLQ patterns |
+| [Apache Airflow](03-orchestration/airflow-reference.md) | DAGs, operators, XComs, sensors, TaskFlow API, dynamic DAGs, CI/CD |
+| [Apache Kafka](04-streaming/kafka-reference.md) | Topics, producers, consumers, Schema Registry, Kafka Connect, DLQ patterns |
 
 ### Storage & Transformation
 
 | Guide | What you'll learn |
 |-------|------------------|
-| [Snowflake Reference](snowflake-reference.md) | Architecture, virtual warehouses, semi-structured data, streams & tasks, RBAC |
-| [dbt Reference](dbt-reference.md) | Models, materializations, tests, macros, incremental models, snapshots, CI/CD |
-| [Apache Iceberg](apache-iceberg.md) | Open table format, hidden partitioning, schema evolution, time travel, ACID, AWS Glue/Athena |
+| [Snowflake Reference](01-storage/snowflake-reference.md) | Architecture, virtual warehouses, semi-structured data, streams & tasks, RBAC |
+| [dbt Reference](02-processing/dbt-reference.md) | Models, materializations, tests, macros, incremental models, snapshots, CI/CD |
+| [Apache Iceberg](01-storage/apache-iceberg.md) | Open table format, hidden partitioning, schema evolution, time travel, ACID, AWS Glue/Athena |
 
 ### Quality & Observability
 
 | Guide | What you'll learn |
 |-------|------------------|
-| [Data Quality](data-quality.md) | SQL checks, Great Expectations, dbt tests, anomaly detection, data contracts, alerting |
+| [Data Quality](05-quality-governance/data-quality.md) | SQL checks, Great Expectations, dbt tests, anomaly detection, data contracts, alerting |
 
 ### AI & Machine Learning
 
 | Guide | What you'll learn |
 |-------|------------------|
-| [Prompt Engineering](prompt-engineering.md) | Zero-shot, few-shot, CoT, structured output, chaining, versioning |
-| [LLM APIs & SDKs](llm-apis.md) | Anthropic Claude & OpenAI — streaming, tool use, vision, caching, batching |
-| [Embeddings](embeddings.md) | Generating embeddings, cosine similarity, chunking, semantic search, clustering |
-| [RAG](rag.md) | Build retrieval-augmented generation pipelines, hybrid search, re-ranking, evaluation |
-| [Vector Databases](vector-databases.md) | pgvector, Pinecone, Chroma, Weaviate — indexing, filtering, multi-tenancy |
-| [AI Agents & Tool Use](ai-agents.md) | Agentic loops, tool definitions, ReAct, multi-agent systems, human-in-the-loop |
-| [LangChain & LlamaIndex](langchain-llamaindex.md) | RAG chains, agents, LCEL, custom retrievers, LangSmith tracing |
-| [Eval & Evals](eval-and-evals.md) | Unit tests for LLMs, LLM-as-judge, RAGAS, regression testing, eval-driven development |
-| [MLflow](mlflow.md) | Experiment tracking, model registry, serving, custom models, DE integration |
-| [Claude Code](claude-code.md) | CLI setup, CLAUDE.md, MCP servers, hooks, skills, CI/headless mode, DE workflows |
-| [Apache Iceberg](apache-iceberg.md) | Table format, hidden partitioning, schema evolution, time travel, ACID, AWS Glue/Athena |
-| [Fine-Tuning LLMs](fine-tuning.md) | LoRA/PEFT, full fine-tuning vs RAG decision, Hugging Face + OpenAI fine-tuning API |
-| [AI Observability](ai-observability.md) | Cost/latency/quality monitoring, LangSmith, Langfuse, OpenTelemetry, RAG tracing |
-| [Local LLMs](local-llms.md) | Ollama, vLLM, Hugging Face, quantization (4-bit/fp16), local RAG, hardware guide |
+| [Prompt Engineering](07-ai/prompt-engineering.md) | Zero-shot, few-shot, CoT, structured output, chaining, versioning |
+| [LLM APIs & SDKs](07-ai/llm-apis.md) | Anthropic Claude & OpenAI — streaming, tool use, vision, caching, batching |
+| [Embeddings](07-ai/embeddings.md) | Generating embeddings, cosine similarity, chunking, semantic search, clustering |
+| [RAG](07-ai/rag.md) | Build retrieval-augmented generation pipelines, hybrid search, re-ranking, evaluation |
+| [Vector Databases](07-ai/vector-databases.md) | pgvector, Pinecone, Chroma, Weaviate — indexing, filtering, multi-tenancy |
+| [AI Agents & Tool Use](07-ai/ai-agents.md) | Agentic loops, tool definitions, ReAct, multi-agent systems, human-in-the-loop |
+| [LangChain & LlamaIndex](07-ai/langchain-llamaindex.md) | RAG chains, agents, LCEL, custom retrievers, LangSmith tracing |
+| [Eval & Evals](07-ai/eval-and-evals.md) | Unit tests for LLMs, LLM-as-judge, RAGAS, regression testing, eval-driven development |
+| [MLflow](07-ai/mlflow.md) | Experiment tracking, model registry, serving, custom models, DE integration |
+| [Claude Code](07-ai/claude-code.md) | CLI setup, CLAUDE.md, MCP servers, hooks, skills, CI/headless mode, DE workflows |
+| [Fine-Tuning LLMs](07-ai/fine-tuning.md) | LoRA/PEFT, full fine-tuning vs RAG decision, Hugging Face + OpenAI fine-tuning API |
+| [AI Observability](07-ai/ai-observability.md) | Cost/latency/quality monitoring, LangSmith, Langfuse, OpenTelemetry, RAG tracing |
+| [Local LLMs](07-ai/local-llms.md) | Ollama, vLLM, Hugging Face, quantization (4-bit/fp16), local RAG, hardware guide |
 
 ### Infrastructure
 
 | Guide | What you'll learn |
 |-------|------------------|
-| [Terraform for DE](terraform-for-de.md) | IaC for S3, IAM, Snowflake, Databricks, MWAA Airflow — modules, remote state, CI patterns |
+| [Terraform for DE](06-infrastructure/terraform-for-de.md) | IaC for S3, IAM, Snowflake, Databricks, MWAA Airflow — modules, remote state, CI patterns |
 
 ### Conceptual & Reference
 
 | Guide | What you'll learn |
 |-------|------------------|
-| [DE Concepts](de-concepts.md) | OLTP/OLAP, batch vs streaming, lakehouse, medallion architecture, file formats, ETL/ELT |
-| [Data Modeling](data-modeling.md) | Star schema, SCDs, fact/dim design, snowflake schema, OBT, Data Vault, dbt layers |
-| [Glossary](glossary.md) | Definitions for every term used across all guides — one place to look things up |
+| [DE Concepts](00-foundations/de-concepts.md) | OLTP/OLAP, batch vs streaming, lakehouse, medallion architecture, file formats, ETL/ELT |
+| [Data Modeling](01-storage/data-modeling.md) | Star schema, SCDs, fact/dim design, snowflake schema, OBT, Data Vault, dbt layers |
+| [Glossary](99-reference/glossary.md) | Definitions for every term used across all guides — one place to look things up |
 
 ---
 
@@ -85,56 +84,56 @@ Each guide follows a **Basic → Intermediate → Advanced** progression with re
 
 ### Path 1: Complete beginner → job-ready
 
-1. [DE Concepts](de-concepts.md) — understand the landscape
-2. [Glossary](glossary.md) — reference when you hit an unfamiliar term
-3. [SQL Reference](sql-reference.md) — the universal language of data
-4. [Python for DE](python-reference.md) — scripting and automation
-5. [Data Modeling](data-modeling.md) — design data structures that scale
-6. [Linux & Bash](linux-bash.md) — work in production environments
-7. [Git for DE](git-for-de.md) — collaborate and ship safely
-8. [Cloud Storage](cloud-storage.md) — store and retrieve data at scale
-9. [Docker for DE](docker-reference.md) — package and run anything
-10. [Terraform for DE](terraform-for-de.md) — provision infra as code
+1. [DE Concepts](00-foundations/de-concepts.md) — understand the landscape
+2. [Glossary](99-reference/glossary.md) — reference when you hit an unfamiliar term
+3. [SQL Reference](00-foundations/sql-reference.md) — the universal language of data
+4. [Python for DE](00-foundations/python-reference.md) — scripting and automation
+5. [Data Modeling](01-storage/data-modeling.md) — design data structures that scale
+6. [Linux & Bash](00-foundations/linux-bash.md) — work in production environments
+7. [Git for DE](00-foundations/git-for-de.md) — collaborate and ship safely
+8. [Cloud Storage](01-storage/cloud-storage.md) — store and retrieve data at scale
+9. [Docker for DE](06-infrastructure/docker-reference.md) — package and run anything
+10. [Terraform for DE](06-infrastructure/terraform-for-de.md) — provision infra as code
 
 ### Path 2: Warehouse & transformation focus
 
-1. [SQL Reference](sql-reference.md)
-2. [Snowflake Reference](snowflake-reference.md)
-3. [dbt Reference](dbt-reference.md)
-4. [Data Quality](data-quality.md)
-5. [Git for DE](git-for-de.md) — dbt CI/CD section
+1. [SQL Reference](00-foundations/sql-reference.md)
+2. [Snowflake Reference](01-storage/snowflake-reference.md)
+3. [dbt Reference](02-processing/dbt-reference.md)
+4. [Data Quality](05-quality-governance/data-quality.md)
+5. [Git for DE](00-foundations/git-for-de.md) — dbt CI/CD section
 
 ### Path 3: Spark & big data focus
 
-1. [DE Concepts](de-concepts.md)
-2. [PySpark Reference](pyspark-reference.md)
-3. [Databricks](databricks-reference.md)
-4. [Cloud Storage](cloud-storage.md)
-5. [Apache Kafka](kafka-reference.md)
+1. [DE Concepts](00-foundations/de-concepts.md)
+2. [PySpark Reference](02-processing/pyspark-reference.md)
+3. [Databricks](02-processing/databricks-reference.md)
+4. [Cloud Storage](01-storage/cloud-storage.md)
+5. [Apache Kafka](04-streaming/kafka-reference.md)
 
 ### Path 4: Streaming & real-time
 
-1. [DE Concepts](de-concepts.md) — streaming section
-2. [Apache Kafka](kafka-reference.md)
-3. [PySpark Reference](pyspark-reference.md) — Structured Streaming section
-4. [Databricks](databricks-reference.md) — Auto Loader and DLT sections
-5. [Data Quality](data-quality.md) — DQ in streaming pipelines
+1. [DE Concepts](00-foundations/de-concepts.md) — streaming section
+2. [Apache Kafka](04-streaming/kafka-reference.md)
+3. [PySpark Reference](02-processing/pyspark-reference.md) — Structured Streaming section
+4. [Databricks](02-processing/databricks-reference.md) — Auto Loader and DLT sections
+5. [Data Quality](05-quality-governance/data-quality.md) — DQ in streaming pipelines
 
 ### Path 5: AI & LLM engineering
 
-1. [Prompt Engineering](prompt-engineering.md) — foundation for everything
-2. [LLM APIs & SDKs](llm-apis.md) — hands-on from day 1
-3. [Embeddings](embeddings.md) — prerequisite for RAG
-4. [RAG](rag.md) — most in-demand AI skill right now
-5. [Vector Databases](vector-databases.md) — implement RAG at scale
-6. [AI Agents & Tool Use](ai-agents.md) — where the field is heading
-7. [LangChain & LlamaIndex](langchain-llamaindex.md) — practical orchestration
-8. [Eval & Evals](eval-and-evals.md) — measure and improve quality
-9. [MLflow](mlflow.md) — bring it back to the data pipeline
-10. [Claude Code](claude-code.md) — use AI to build AI things
-11. [Fine-Tuning LLMs](fine-tuning.md) — when RAG isn't enough
-12. [AI Observability](ai-observability.md) — monitor production LLM apps
-13. [Local LLMs](local-llms.md) — run models without the API bill
+1. [Prompt Engineering](07-ai/prompt-engineering.md) — foundation for everything
+2. [LLM APIs & SDKs](07-ai/llm-apis.md) — hands-on from day 1
+3. [Embeddings](07-ai/embeddings.md) — prerequisite for RAG
+4. [RAG](07-ai/rag.md) — most in-demand AI skill right now
+5. [Vector Databases](07-ai/vector-databases.md) — implement RAG at scale
+6. [AI Agents & Tool Use](07-ai/ai-agents.md) — where the field is heading
+7. [LangChain & LlamaIndex](07-ai/langchain-llamaindex.md) — practical orchestration
+8. [Eval & Evals](07-ai/eval-and-evals.md) — measure and improve quality
+9. [MLflow](07-ai/mlflow.md) — bring it back to the data pipeline
+10. [Claude Code](07-ai/claude-code.md) — use AI to build AI things
+11. [Fine-Tuning LLMs](07-ai/fine-tuning.md) — when RAG isn't enough
+12. [AI Observability](07-ai/ai-observability.md) — monitor production LLM apps
+13. [Local LLMs](07-ai/local-llms.md) — run models without the API bill
 
 ---
 
