@@ -7,6 +7,27 @@
 
 ---
 
+## Plain English: What Are Embeddings?
+
+**The problem:** Computers compare text by characters. A keyword search for "customer churn" misses a document titled "Why users cancel their subscriptions", even though it's exactly what you wanted. SQL `LIKE` and full-text search only know the words, not what they mean.
+
+**Embeddings are the fix:** an embedding model turns any text into a list of numbers (a vector, e.g. 1,024 of them) so that texts with *similar meaning* end up close together. "Customer churn" and "users cancelling subscriptions" land near each other; "customer churn" and "butter churn" don't. Once text is numbers, "find similar things" becomes simple math — the distance between vectors.
+
+```
+            meaning space (squashed to 2-D)
+                  ▲
+  "users cancel"  ●  ● "customer churn"
+  "retention drop"  ●
+                                    ● "butter churn recipe"
+                  ● "Q3 revenue"
+                  └────────────────────────▶
+   close together = similar meaning   ·   far apart = unrelated
+```
+
+**Why data engineers care:** embeddings are the core of RAG and semantic search, and they're also useful for deduplicating messy records, classifying text without training a model, and clustering. Generating and storing them at scale — batching, incremental updates, versioning — is a data pipeline problem.
+
+---
+
 ## Table of Contents
 
 **Basic**
@@ -25,6 +46,12 @@
 - [Fine-Tuning Embeddings](#fine-tuning-embeddings)
 - [Storing Embeddings at Scale](#storing-embeddings-at-scale)
 - [Embedding Pipelines in Production](#embedding-pipelines-in-production)
+
+**Reference**
+- [Common Pitfalls](#common-pitfalls)
+- [Cheat Sheet](#cheat-sheet)
+- [Interview Questions](#interview-questions)
+- [Further Reading](#further-reading)
 
 ---
 
@@ -156,6 +183,8 @@ def top_k_similar(query_vec: np.ndarray, doc_vecs: np.ndarray, k: int = 5) -> li
 | `voyage-3-large` (Voyage AI) | 1024 | Medium | Medium | High-accuracy retrieval |
 | `all-MiniLM-L6-v2` (local) | 384 | Very fast | Free | Prototyping, offline |
 | `bge-large-en` (local) | 1024 | Medium | Free | Production on-prem |
+
+> Embedding models are released often (newer Voyage versions, Cohere, Gemini, open-weight models like BGE, E5, and Nomic). Compare on the [MTEB leaderboard](https://huggingface.co/spaces/mteb/leaderboard), then test on *your* data — leaderboard rank doesn't guarantee the best retrieval for your domain.
 
 **Tips:**
 - Start with `text-embedding-3-small` — it's fast and good enough for most RAG
@@ -477,6 +506,71 @@ class IncrementalEmbeddingPipeline:
         print(f"Embedded: {len(to_embed)} new, {len(from_cache) - len(to_embed)} cached")
         return from_cache
 ```
+
+---
+
+## Common Pitfalls
+
+| Pitfall | Symptom | Fix |
+|---------|---------|-----|
+| Mixing embeddings from different models or versions in one index | Similarity scores become meaningless; search quality collapses | Store the model name and version with every vector; re-embed everything when you switch models |
+| Embedding whole documents | Relevant passages drowned out; retrieval returns vague matches | Chunk into passages (a few hundred tokens) with some overlap; embed chunks |
+| Chunks cut mid-sentence or mid-table | Retrieved text lacks context and misleads the LLM | Split on structure (headings, paragraphs, rows); prepend the title or section to each chunk |
+| Query and documents embedded differently | Lower recall with models that expect input types | Use the model's `input_type` / query vs document prefixes where supported |
+| Re-embedding the full corpus every run | Slow and expensive pipelines | Hash content; embed only new or changed chunks |
+| Comparing unnormalized vectors with dot product | Rankings skewed by vector length | Normalize (or use cosine similarity) consistently |
+| Choosing a model from a leaderboard alone | Worse retrieval on your domain than expected | Build a small labelled query set and measure recall@k on your own data |
+| Using embeddings for exact lookups (IDs, error codes, SKUs) | "Similar" results instead of the exact match | Hybrid search: combine keyword (BM25) with vector search |
+| Storing vectors as JSON text | Huge storage, slow loads | Native vector types (pgvector, vector DBs) or float32 arrays in Parquet |
+
+---
+
+## Cheat Sheet
+
+| Task | Code |
+|------|------|
+| OpenAI | `client.embeddings.create(model="text-embedding-3-small", input=texts)` → `[d.embedding for d in r.data]` |
+| Voyage (recommended with Claude) | `vo.embed(texts, model="voyage-3", input_type="document")` → `.embeddings` |
+| Local | `SentenceTransformer("all-MiniLM-L6-v2").encode(texts, normalize_embeddings=True)` |
+| Cosine similarity | `a @ b / (np.linalg.norm(a) * np.linalg.norm(b))` |
+| Top-k over a matrix (normalized) | `scores = M @ q; idx = np.argsort(-scores)[:k]` |
+| Shrink dimensions (Matryoshka models) | OpenAI `dimensions=512` · Voyage `output_dimension=512` |
+| Content hash for incremental updates | `hashlib.sha256(text.encode()).hexdigest()` |
+
+**Similarity metrics:** cosine (direction only — the default for text) · dot product (equals cosine for normalized vectors, fastest) · Euclidean / L2 (distance; used by some indexes)
+
+**Rules of thumb:** chunks of ~200–800 tokens with 10–20% overlap · normalize vectors · keep the model name and dimensions in metadata · batch API calls (hundreds of texts per request) · evaluate with recall@k on real queries
+
+**Storage options:** NumPy/Parquet (under ~100k vectors, offline) · pgvector (already on Postgres) · a dedicated vector DB (millions of vectors, filtering, low latency) · lakehouse tables with vector search (Databricks, Snowflake)
+
+---
+
+## Interview Questions
+
+**Q: What is an embedding, and how is it different from a keyword index?**
+A: An embedding is a dense vector produced by a neural model that captures meaning, so semantically similar texts have nearby vectors even when they share no words. A keyword index (like BM25) matches exact terms and is great for IDs, names, and rare terms, but misses paraphrases. In practice they're complementary, which is why production search often uses both (hybrid search).
+
+**Q: Why do we chunk documents before embedding them, and how do you choose a chunk size?**
+A: A single vector can only summarize so much. Embedding a 30-page document produces a blurry average that matches many queries weakly, and whatever you retrieve must also fit in the LLM's prompt. Chunking into passages makes each vector specific. Size is a trade-off: small chunks are precise but lose context; large chunks keep context but dilute relevance. Start around a few hundred tokens with some overlap, split on natural boundaries, and tune using retrieval metrics on real queries.
+
+**Q: What is cosine similarity and why is it used for text embeddings?**
+A: It's the cosine of the angle between two vectors — 1 for the same direction, 0 for unrelated, negative for opposite. It compares direction rather than magnitude, and for text embeddings direction carries the meaning. If vectors are normalized to length 1, cosine similarity equals the dot product, which is cheaper to compute — which is why many systems normalize at write time.
+
+**Q: How would you build a pipeline that keeps embeddings up to date for a changing document store?**
+A: Treat it as incremental ETL: detect new, changed, and deleted documents (CDC or content hashes), re-chunk only the changed ones, embed in batches with retries and rate limiting, and upsert vectors keyed by a stable chunk ID along with metadata (source ID, hash, model version, timestamps). Deletes must remove the vectors too. Record the embedding model version so that a model change triggers a full, versioned re-embed — ideally into a new index you swap in once it's ready.
+
+**Q: How do you evaluate an embedding model for your use case?**
+A: Build a labelled set of realistic queries paired with the documents that should be retrieved, then measure retrieval metrics — recall@k, MRR, or nDCG — for each candidate model and chunking strategy. Also weigh cost per million tokens, latency, vector size (storage and search cost), and whether the model can run where your data is allowed to go.
+
+---
+
+## Further Reading
+
+- [OpenAI embeddings guide](https://platform.openai.com/docs/guides/embeddings)
+- [Voyage AI documentation](https://docs.voyageai.com/) and [Anthropic's embeddings guide](https://docs.claude.com/en/docs/build-with-claude/embeddings)
+- [Sentence Transformers](https://sbert.net/) — local embedding models and fine-tuning
+- [MTEB leaderboard](https://huggingface.co/spaces/mteb/leaderboard) — benchmark results across many tasks
+- [RAG](rag.md) and [Vector Databases](vector-databases.md) — where embeddings are used next
 
 ---
 
