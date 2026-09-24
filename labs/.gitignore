@@ -17,3 +17,7 @@ lakehouse/
 spark-warehouse/
 metastore_db/
 derby.log
+
+# Airflow
+05-airflow-orchestration/warehouse/
+05-airflow-orchestration/.env
