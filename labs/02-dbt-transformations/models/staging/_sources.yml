@@ -1,0 +1,14 @@
+sources:
+  - name: raw
+    description: Files produced by labs/data/generate.py, read in place by DuckDB.
+    meta:
+      external_location: "read_csv('../data/output/{name}.csv', header = true, auto_detect = true)"
+    tables:
+      - name: customers
+      - name: products
+      - name: orders
+        description: One row per order version — may contain several versions of the same order.
+      - name: order_items
+      - name: events
+        meta:
+          external_location: "read_json('../data/output/events.jsonl', format = 'newline_delimited')"

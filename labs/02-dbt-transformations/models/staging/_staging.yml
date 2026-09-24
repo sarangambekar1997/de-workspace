@@ -1,0 +1,61 @@
+models:
+  - name: stg_raw__orders
+    description: Latest version of each order, with lowercase status.
+    columns:
+      - name: order_id
+        data_tests: [unique, not_null]
+      - name: status
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [placed, paid, shipped, delivered, cancelled]
+      - name: customer_id
+        description: Missing for a small number of orders in the source.
+        data_tests:
+          - not_null:
+              config:
+                severity: warn        # known source issue — report, don't fail the build
+
+  - name: stg_raw__order_items
+    columns:
+      - name: order_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_raw__orders')
+                field: order_id
+
+  - name: stg_raw__events
+    columns:
+      - name: event_id
+        data_tests: [unique, not_null]
+
+  - name: stg_raw__customers
+    columns:
+      - name: customer_id
+        data_tests: [unique, not_null]
+
+  - name: stg_raw__products
+    columns:
+      - name: product_id
+        data_tests: [unique, not_null]
+
+unit_tests:
+  - name: test_orders_keep_latest_version
+    description: When an order appears twice, staging keeps the most recent version and lowercases status.
+    model: stg_raw__orders
+    given:
+      # Sources read from files have no catalog types, so the fixture is given as typed SQL
+      - input: source('raw', 'orders')
+        format: sql
+        rows: |
+          select 1 as order_id, 10 as customer_id, timestamp '2024-03-01 10:00:00' as order_ts,
+                 'PAID' as status, 'USD' as currency, timestamp '2024-03-01 10:00:00' as updated_at
+          union all
+          select 1, 10, timestamp '2024-03-01 10:00:00', 'delivered', 'USD', timestamp '2024-03-02 09:00:00'
+          union all
+          select 2, 11, timestamp '2024-03-01 11:00:00', 'SHIPPED', 'EUR', timestamp '2024-03-01 11:00:00'
+    expect:
+      rows:
+        - {order_id: 1, status: delivered}
+        - {order_id: 2, status: shipped}

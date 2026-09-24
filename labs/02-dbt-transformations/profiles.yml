@@ -1,0 +1,8 @@
+# dbt looks for profiles.yml in the current directory first, so this file works as-is.
+shop:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: shop.duckdb
+      threads: 4

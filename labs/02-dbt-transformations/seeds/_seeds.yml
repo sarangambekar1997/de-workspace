@@ -1,0 +1,6 @@
+seeds:
+  - name: currency_rates
+    description: Fixed conversion rates to USD (a simplified reference table).
+    columns:
+      - name: currency
+        data_tests: [unique, not_null]

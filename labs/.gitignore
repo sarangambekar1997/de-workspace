@@ -1,0 +1,13 @@
+# Generated data — recreate with: python data/generate.py
+data/output/
+
+# Local databases and tool output
+*.duckdb
+*.duckdb.wal
+target/
+dbt_packages/
+logs/
+.user.yml
+
+# The repo root ignores *.csv; lab reference data is source code
+!*/seeds/*.csv
