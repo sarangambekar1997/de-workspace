@@ -11,3 +11,9 @@ logs/
 
 # The repo root ignores *.csv; lab reference data is source code
 !*/seeds/*.csv
+
+# Spark
+lakehouse/
+spark-warehouse/
+metastore_db/
+derby.log
