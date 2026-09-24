@@ -1,0 +1,9 @@
+snapshots:
+  - name: snap_customers
+    description: SCD Type 2 history of customers (country changes over time).
+    relation: ref('stg_raw__customers')
+    config:
+      schema: snapshots
+      unique_key: customer_id
+      strategy: timestamp
+      updated_at: updated_at

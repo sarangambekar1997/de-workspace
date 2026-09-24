@@ -1,0 +1,11 @@
+# Exercise 2: document and test the new model
+models:
+  - name: fct_customer_ltv
+    description: One row per customer, including customers who never ordered.
+    columns:
+      - name: customer_id
+        data_tests: [unique, not_null]
+      - name: orders
+        data_tests: [not_null]
+      - name: lifetime_value_usd
+        data_tests: [not_null]

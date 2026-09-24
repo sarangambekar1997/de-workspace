@@ -1,0 +1,30 @@
+# Exercise 4: unit test the line classification logic with hand-written inputs
+unit_tests:
+  - name: test_line_status_classification
+    description: Each kind of bad line gets its own status; good lines are valid.
+    model: int_order_lines__valid
+    given:
+      - input: ref('stg_raw__order_items')
+        rows:
+          - {order_id: 1, line_no: 1, product_id: 1,   quantity: 2,  unit_price: 10.00}
+          - {order_id: 1, line_no: 2, product_id: 999, quantity: 1,  unit_price: 10.00}
+          - {order_id: 1, line_no: 3, product_id: 1,   quantity: -1, unit_price: 10.00}
+          - {order_id: 2, line_no: 1, product_id: 1,   quantity: 1,  unit_price: 10.00}
+      - input: ref('stg_raw__orders')
+        rows:
+          - {order_id: 1, customer_id: 10, order_ts: "2024-03-01 10:00:00", status: paid,      currency: EUR}
+          - {order_id: 2, customer_id: 11, order_ts: "2024-03-01 11:00:00", status: cancelled, currency: USD}
+      - input: ref('stg_raw__products')
+        rows:
+          - {product_id: 1, category: books}
+      - input: ref('currency_rates')
+        rows:
+          - {currency: EUR, rate_to_usd: 1.25}
+          - {currency: USD, rate_to_usd: 1.00}
+    expect:
+      # Every expected row must list the same columns
+      rows:
+        - {order_id: 1, line_no: 1, line_status: valid,                 line_amount_usd: 25.0}
+        - {order_id: 1, line_no: 2, line_status: unknown_product,       line_amount_usd: 12.5}
+        - {order_id: 1, line_no: 3, line_status: non_positive_quantity, line_amount_usd: -12.5}
+        - {order_id: 2, line_no: 1, line_status: cancelled_order,       line_amount_usd: 10.0}

@@ -5,6 +5,8 @@
 
 **Related:** [Data Modeling](../01-storage/data-modeling.md) · [Snowflake](../01-storage/snowflake-reference.md) · [dbt](../02-processing/dbt-reference.md) · [Glossary](../99-reference/glossary.md)
 
+**Practice:** [Lab 01 — SQL Analytics](https://github.com/sarangambekar1997/de-workspace/tree/main/labs/01-sql-analytics)
+
 ---
 
 ## Overview

@@ -5,6 +5,8 @@
 
 **Related:** [Databricks](databricks-reference.md) · [Apache Iceberg](../01-storage/apache-iceberg.md) · [Kafka](../04-streaming/kafka-reference.md) · [DuckDB & Polars](duckdb-polars.md) · [Glossary](../99-reference/glossary.md)
 
+**Practice:** [Lab 03 — Spark Lakehouse](https://github.com/sarangambekar1997/de-workspace/tree/main/labs/03-spark-lakehouse)
+
 ---
 
 ## Overview

@@ -1,0 +1,28 @@
+models:
+  - name: fct_orders
+    description: One row per order. Revenue in USD from valid lines only.
+    columns:
+      - name: order_id
+        data_tests: [unique, not_null]
+      - name: customer_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_customer')
+                field: customer_id
+
+  - name: fct_daily_revenue
+    description: Daily revenue in USD (incremental, 3-day lookback for late changes).
+    columns:
+      - name: order_date
+        data_tests: [unique, not_null]
+
+  - name: dim_customer
+    columns:
+      - name: customer_id
+        data_tests: [unique, not_null]
+
+  - name: dim_product
+    columns:
+      - name: product_id
+        data_tests: [unique, not_null]
