@@ -25,6 +25,7 @@ Every guide goes **Basic → Intermediate → Advanced** with working code examp
 | [`docs/07-ai`](docs/07-ai) | Prompting, LLM APIs, embeddings, RAG, vector DBs, agents, evals, MLflow, fine-tuning |
 | [`docs/08-architecture`](docs/08-architecture) | System design, cost optimization |
 | [`docs/99-reference`](docs/99-reference) | Glossary |
+| [`labs`](labs) | Hands-on labs: SQL, dbt, Spark & Delta Lake, Kafka, Airflow |
 
 Folders are numbered roughly in learning order. New topics go in the folder that matches
 where they sit in a pipeline, and a new top-level area gets the next free number.
@@ -42,11 +43,23 @@ where they sit in a pipeline, and a new top-level area gets the next free number
 
 The full learning paths, the "when should I use what" tables, and the cheat sheets are in the [index](docs/README.md).
 
+## Hands-on labs
+
+[Five labs](labs/README.md) turn the guides into practice on one realistic e-commerce dataset, with its duplicates, missing keys, late events and changing records. Each lab runs locally without a cloud account, and each has runnable exercises and reference solutions that were run end to end.
+
+| Lab | Runs on |
+|-----|---------|
+| [01 — SQL Analytics](labs/01-sql-analytics/README.md) | DuckDB |
+| [02 — dbt Transformations](labs/02-dbt-transformations/README.md) | dbt + DuckDB |
+| [03 — Spark Lakehouse](labs/03-spark-lakehouse/README.md) | PySpark + Delta Lake |
+| [04 — Kafka Streaming](labs/04-kafka-streaming/README.md) | Docker (Kafka) |
+| [05 — Airflow Orchestration](labs/05-airflow-orchestration/README.md) | Docker (Airflow) |
+
 ## Writing a new guide
 
 Copy [`docs/_template.md`](docs/_template.md). Every guide uses the same sections:
 
-1. Prerequisites / Related links at the top
+1. Prerequisites / Related links at the top, plus a Practice link when a lab covers the topic
 2. Overview (the problem the topic solves and how, before any code)
 3. Table of contents split into Basic / Intermediate / Advanced
 4. Content sections with runnable code
